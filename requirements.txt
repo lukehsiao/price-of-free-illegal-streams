@@ -1,11 +1,12 @@
+Cython
+IPython>=5.0,<6.0; python_version < '3.0'
+IPython>=5.0; python_version >= '3.0'
+PyOPenSSL
 beautifulsoup4
 boto3
-Cython
 dill
 flake8
 flake8-isort
-IPython>=5.0,<6.0; python_version < '3.0'
-IPython>=5.0; python_version >= '3.0'
 mini-amf
 mmh3
 multiprocess
@@ -14,10 +15,10 @@ pandas
 pillow
 plyvel
 psutil
+psycopg2
 publicsuffix
 pyarrow
 pyasn1
-PyOPenSSL
 pytest
 python-dateutil
 pyvirtualdisplay
