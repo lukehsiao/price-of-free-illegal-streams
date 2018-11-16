@@ -44,17 +44,17 @@ manager_params["log_directory"] = dir_path
 manager = TaskManager.TaskManager(manager_params, browser_params)
 
 # Visits the sites with all browsers simultaneously
-for site in sites:
+for idx, site in enumerate(sites):
     command_sequence = CommandSequence.CommandSequence(site)
 
-    # Start by visiting the page
-    command_sequence.get(sleep=0, timeout=60)
+    # Start by visiting the page and sleeping for `sleep` seconds
+    command_sequence.get(sleep=20, timeout=60)
 
     # Save screenshot
-    command_sequence.save_screenshot(str(i), timeout=60)
+    command_sequence.save_screenshot(str(idx), timeout=60)
 
     # Save source
-    command_sequence.dump_page_source(str(i), timeout=60)
+    command_sequence.dump_page_source(str(idx), timeout=60)
 
     # dump_profile_cookies/dump_flash_cookies closes the current tab.
     command_sequence.dump_profile_cookies(120)
