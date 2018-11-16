@@ -14,8 +14,9 @@ from get_sites import update_last_scanned, get_urls_to_inspect
 # days_ago_3 = int(time.time()) - 86400*3
 # update_last_scanned(days_ago_3)
 NUM_BROWSERS = 3
+before_scan__time = int(time.time())
 sites = get_urls_to_inspect()
-print(sites)
+#print(sites)
 # sites = ['http://www.example.com',
 #         'http://www.princeton.edu',
 #         'http://citp.princeton.edu/']
@@ -66,5 +67,4 @@ manager.close()
 
 # TODO: Some check that inspection was successful
 if True:
-    cur_time = int(time.time())
-    update_last_scanned(cur_time)
+    update_last_scanned(before_scan_time)

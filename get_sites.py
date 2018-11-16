@@ -1,6 +1,7 @@
 import calendar
 import psycopg2
 import os
+import time
 
 GCSQL_PWD = os.environ["GCSQL_PWD"]
 
@@ -37,6 +38,7 @@ def get_last_inspect(inspector="OpenWPM"):
     last_time = rows[0][0]
     cur.close()
     conn.close()
+    print(last_time)
     return calendar.timegm(last_time.timetuple())
 
 
@@ -93,12 +95,21 @@ def get_urls_to_inspect():
     )
     cur = conn.cursor()
     get_urls_cmd = (
-        "SELECT url FROM stream_urls WHERE (last_access) > (%s)"
+        "SELECT url, aggregator, created_on FROM stream_urls WHERE (last_access) > (%s)"
     )
     cur.execute(get_urls_cmd, (psycopg2.TimestampFromTicks(last_inspect_time),))
     rows = cur.fetchall()
     sites = []
     for row in rows:
-        sites.append(row[0])
+        if row[1] == "reddit":
+            # For reddit gathered streams we can use whether the stream was posted
+            # between 1 hour and 3 hours ago as a proxy for the stream being live
+            posted = calendar.timegm(row[2].timetuple())
+            utcnow = int(time.time())
+            # Only visit websites created between 1.5 and 5 hours ago
+            if utcnow - posted > 5400 and utcnow - posted < 18000:
+                sites.append(row[0])
+        else:
+            sites.append(row[0])
     print("num_urls: " + str(len(sites)))
     return sites
