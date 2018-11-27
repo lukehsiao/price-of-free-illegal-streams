@@ -1,3 +1,7 @@
+# Google Cloud Specific Files
+cloud_sql_proxy
+sports-streaming*.json
+
 .venv/
 .virtualenv/
 venv/
