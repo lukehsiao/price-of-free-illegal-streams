@@ -1,14 +1,12 @@
 from __future__ import absolute_import
+
 import os
+import time
 
 from six.moves import range
 
 from automation import CommandSequence, TaskManager
-
-import time
-
-from get_sites import update_last_scanned, get_urls_to_inspect
-
+from utils import get_urls_to_inspect, update_last_scanned
 
 # The list of sites that we wish to crawl
 # days_ago_3 = int(time.time()) - 86400*3
@@ -16,7 +14,7 @@ from get_sites import update_last_scanned, get_urls_to_inspect
 NUM_BROWSERS = 3
 before_scan__time = int(time.time())
 sites = get_urls_to_inspect()
-#print(sites)
+# print(sites)
 # sites = ['http://www.example.com',
 #         'http://www.princeton.edu',
 #         'http://citp.princeton.edu/']
@@ -35,7 +33,7 @@ for i in range(NUM_BROWSERS):
     browser_params[i]["headless"] = True
 
 # Update TaskManager configuration (use this for crawl-wide settings)
-dir_path = os.path.dirname(os.path.realpath(__file__)) + "/data/"
+dir_path = os.path.dirname(os.path.realpath(__file__)) + "/../data/"
 manager_params["data_directory"] = dir_path
 manager_params["log_directory"] = dir_path
 
@@ -66,5 +64,5 @@ for idx, site in enumerate(sites):
 manager.close()
 
 # TODO: Some check that inspection was successful
-if True:
+if False:
     update_last_scanned(before_scan_time)

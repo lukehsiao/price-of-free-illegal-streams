@@ -32,7 +32,9 @@ def get_last_inspect(inspector="OpenWPM"):
         password=GCSQL_PWD,
     )
     cur = conn.cursor()
-    select_cmd = "SELECT scanned FROM last_inspect WHERE inspector = '" + inspector + "'"
+    select_cmd = (
+        "SELECT scanned FROM last_inspect WHERE inspector = '" + inspector + "'"
+    )
     cur.execute(select_cmd)
     rows = cur.fetchall()
     last_time = rows[0][0]
@@ -71,13 +73,16 @@ def update_last_scanned(scan_time, inspector="OpenWPM"):
     )
     cur = conn.cursor()
     update_cmd = (
-        "UPDATE last_inspect SET " "(scanned)" "= (%s) WHERE inspector = '" + inspector + "'"
+        "UPDATE last_inspect SET "
+        "(scanned)"
+        "= (%s) WHERE inspector = '" + inspector + "'"
     )
     cur.execute(update_cmd, (psycopg2.TimestampFromTicks(scan_time),))
     conn.commit()
     cur.close()
     conn.close()
     return 0
+
 
 def get_urls_to_inspect():
     """Get all new URLS since the last successful inspection
