@@ -1,7 +1,8 @@
+bs4
 geoip2
 ipwhois
 matplotlib
 pandas
-seaborn
 requests
-bs4
+seaborn
+tqdm
