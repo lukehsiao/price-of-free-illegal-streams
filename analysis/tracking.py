@@ -12,7 +12,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-DELIMITER = "^"
+DELIMITER = "~^~"
 
 
 def get_third_parties(conn, easylist):
@@ -21,14 +21,25 @@ def get_third_parties(conn, easylist):
     c = conn.cursor()
 
     for row in c.execute(
-        "SELECT s.visit_id,"
-        "       s.site_url,"
-        "       group_concat(distinct r.url, {}) AS r_urls "
-        "FROM site_visits AS s, http_requests as r "
-        "WHERE s.visit_id = r.visit_id AND r.is_third_party_channel = 1 "
-        "GROUP BY s.visit_id, s.site_url;".format(DELIMITER)
+        """
+        SELECT
+            s.visit_id,
+            s.site_url,
+            (
+                SELECT group_concat(url, '{}')
+                FROM http_requests AS r
+                WHERE s.visit_id = r.visit_id AND r.is_third_party_channel = 1
+            ) AS r_urls
+        FROM site_visits AS s;
+        """.format(
+            DELIMITER
+        )
     ):
         (visit_id, site_url, requests) = row
+
+        if not requests:
+            continue
+
         requests = requests.split(DELIMITER)
 
         logger.debug("{}: {}".format(site_url, requests))
@@ -56,14 +67,25 @@ def get_cookies(conn, easylist):
     c = conn.cursor()
 
     for row in c.execute(
-        "SELECT s.visit_id,"
-        "       s.site_url,"
-        "       group_concat(distinct p.baseDomain, {}) AS p_cookies "
-        "FROM site_visits AS s, profile_cookies as p "
-        "WHERE s.visit_id = p.visit_id "
-        "GROUP BY s.visit_id, s.site_url;".format(DELIMITER)
+        """
+        SELECT
+            s.visit_id,
+            s.site_url,
+            (
+                SELECT group_concat(baseDomain, '{}')
+                FROM profile_cookies AS p
+                WHERE s.visit_id = p.visit_id
+            ) AS p_cookies
+        FROM site_visits AS s;
+        """.format(
+            DELIMITER
+        )
     ):
         (visit_id, site_url, cookie_domains) = row
+
+        if not cookie_domains:
+            continue
+
         cookie_domains = cookie_domains.split(DELIMITER)
         logger.debug("{}: {}".format(site_url, cookie_domains))
 
