@@ -12,7 +12,7 @@ from ipwhois import IPWhois
 from matplotlib.backends.backend_pdf import PdfPages
 from tqdm import tqdm
 
-from utils import get_channel_providers, urls_per_channel_provider, total_stream_urls
+from utils import get_channel_providers, total_stream_urls, urls_per_channel_provider
 
 logging.basicConfig(
     format="[%(asctime)s][%(levelname)s] %(name)s - %(message)s",
