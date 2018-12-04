@@ -9,7 +9,7 @@ class GeoLocate:
     def __init__(self):
         """Setup geolocation."""
         self.reader = geoip2.database.Reader(
-            os.path.dirname(os.path.realpath(__file__)) + "GeoLite2-City.mmdb"
+            os.path.dirname(os.path.realpath(__file__)) + "/GeoLite2-City.mmdb"
         )
 
     def locate(self, ip):

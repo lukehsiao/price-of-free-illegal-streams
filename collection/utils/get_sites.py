@@ -118,3 +118,6 @@ def get_urls_to_inspect():
             sites.append(row[0])
     print("num_urls: " + str(len(sites)))
     return sites
+
+if __name__=="__main__":
+    update_last_scanned(0);
