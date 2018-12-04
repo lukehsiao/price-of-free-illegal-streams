@@ -9,23 +9,23 @@ import logging
 from six.moves import range
 
 from automation import CommandSequence, TaskManager
-from utils import get_urls_to_inspect, update_last_scanned, GeoLocate
+from utils import get_urls_to_inspect, update_last_scanned
 
+logging.basicConfig(
+    format="[%(asctime)s][%(levelname)s] %(name)s - %(message)s",
+    filename="inspect_streams.log",
+    level=logging.INFO,
+)
 logger = logging.getLogger(__name__)
 
 
 def main():
-    geo = GeoLocate()
     # The list of sites that we wish to crawl
     # days_ago_3 = int(time.time()) - 86400*3
     # update_last_scanned(days_ago_3)
     NUM_BROWSERS = 3
     before_scan_time = int(time.time())
-    sites = get_urls_to_inspect()
-    # print(sites)
-    # sites = ['http://www.example.com',
-    #         'http://www.princeton.edu',
-    #         'http://citp.princeton.edu/']
+    sites = get_urls_to_inspect(inspector="OpenWPM")
 
     # Loads the manager preference and 3 copies of the default browser dictionaries
     manager_params, browser_params = TaskManager.load_default_params(NUM_BROWSERS)
@@ -49,8 +49,11 @@ def main():
     # Commands time out by default after 60 seconds
     manager = TaskManager.TaskManager(manager_params, browser_params)
 
+    logger.info("Initialized browsers.")
+
     # Visits the sites with all browsers simultaneously
     for idx, site in enumerate(sites):
+        logger.info("  {}...".format(site))
         command_sequence = CommandSequence.CommandSequence(site)
 
         # Start by visiting the page and sleeping for `sleep` seconds
@@ -70,11 +73,11 @@ def main():
 
     # Shuts down the browsers and waits for the data to finish logging
     manager.close()
-    geo.close()
 
     # TODO: Some check that inspection was successful
     if False:
-        update_last_scanned(before_scan_time)
+        logger.info("Updating last_scanned time...")
+        update_last_scanned(before_scan_time, inspector="OpenWPM")
 
 
 if __name__ == "__main__":
