@@ -1,9 +1,12 @@
 import calendar
 import psycopg2
+import logging
 import os
 import time
 
 GCSQL_PWD = os.environ["GCSQL_PWD"]
+
+logger = logging.getLogger(__name__)
 
 
 def get_last_inspect(inspector="OpenWPM"):
@@ -40,7 +43,7 @@ def get_last_inspect(inspector="OpenWPM"):
     last_time = rows[0][0]
     cur.close()
     conn.close()
-    print(last_time)
+    logger.info(last_time)
     return calendar.timegm(last_time.timetuple())
 
 
@@ -84,13 +87,13 @@ def update_last_scanned(scan_time, inspector="OpenWPM"):
     return 0
 
 
-def get_urls_to_inspect():
+def get_urls_to_inspect(inspector="OpenWPM"):
     """Get all new URLS since the last successful inspection
 
     :rtype: List of Strings
     """
 
-    last_inspect_time = get_last_inspect()
+    last_inspect_time = get_last_inspect(inspector=inspector)
     conn = psycopg2.connect(
         host="localhost",
         port="6543",
@@ -116,5 +119,5 @@ def get_urls_to_inspect():
                 sites.append(row[0])
         else:
             sites.append(row[0])
-    print("num_urls: " + str(len(sites)))
+    logger.info("num_urls: " + str(len(sites)))
     return sites
