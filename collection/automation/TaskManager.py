@@ -203,7 +203,7 @@ class TaskManager:
                     if browser.display_pid is not None:
                         display_pids.add(browser.display_pid)
                 for process in psutil.process_iter():
-                    if (process.create_time() + 300 < check_time and (
+                    if (process.create_time() + 500 < check_time and (
                             (process.name() == 'firefox' and
                              process.pid not in browser_pids) or
                             (process.name() == 'Xvfb' and
