@@ -129,19 +129,51 @@ def get_cookies(conn, easylist):
     return cookies
 
 
+def latex_cookies(cookies, num_rows=10):
+    all_cps = []
+    for key, value in cookies.items():
+        domains = value["total_domains"]
+        trackers = value["total_trackers"]
+        percentage = trackers / domains
+        all_cps.append((key, domains, trackers, percentage))
+
+    # sort by percentage
+    all_cps.sort(key=lambda x: x[3], reverse=True)
+
+    for cp, d, t, p in all_cps[:num_rows]:
+        print("{} & {} & {} & {} \\\\".format(cp, d, t, p))
+
+
+def latex_third_parties(third_parties, num_rows=10):
+    all_cps = []
+    for key, value in third_parties.items():
+        domains = value["total_domains"]
+        trackers = value["total_trackers"]
+        percentage = trackers / domains
+        all_cps.append((key, domains, trackers, percentage))
+
+    # sort by percentage
+    all_cps.sort(key=lambda x: x[3], reverse=True)
+
+    for cp, d, t, p in all_cps[:num_rows]:
+        print("{} & {} & {} & {} \\\\".format(cp, d, t, p))
+
+
 def main():
 
     easylist = EasyList()
     conn = sqlite3.connect("../data/crawl-data.sqlite")
 
     cookies = get_cookies(conn, easylist)
-
     third_parties = get_third_parties(conn, easylist)
+
+    latex_cookies(cookies)
+    latex_third_parties(third_parties)
 
     conn.close()
 
-    pprint(cookies)
-    pprint(third_parties)
+    #  pprint(cookies)
+    #  pprint(third_parties)
 
 
 if __name__ == "__main__":
