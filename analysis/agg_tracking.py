@@ -10,10 +10,10 @@ if __name__ == "__main__":
 
     third_parties = {}
     cookies = {}
-    with open("third_parties.json", "r") as f:
+    with open("cache/thid_parties.json", "r") as f:
         third_parties = json.load(f)
 
-    with open("cookies.json", "r") as f:
+    with open("cache/cookies.json", "r") as f:
         cookies = json.load(f)
 
     # Init db connection

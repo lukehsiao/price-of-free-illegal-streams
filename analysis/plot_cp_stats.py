@@ -222,7 +222,7 @@ def fetch_channel_provider_data():
         host, globalrank.
     """
     try:
-        data = pd.read_pickle("cp_data.pkl")
+        data = pd.read_pickle("cache/cp_data.pkl")
     except FileNotFoundError:
         url_map = {}
         for base_url, ip in tqdm(get_channel_providers()):
@@ -262,7 +262,7 @@ def fetch_channel_provider_data():
                 "globalrank",
             ],
         )
-        data.to_pickle("cp_data.pkl")
+        data.to_pickle("cache/cp_data.pkl")
     return data
 
 
