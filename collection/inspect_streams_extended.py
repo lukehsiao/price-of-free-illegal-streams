@@ -16,6 +16,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 logger = logging.getLogger(__name__)
 
 linked_urls = {}
+rename_count = 0
 
 
 def click_on_page(num_clicks, **kwargs):
@@ -23,16 +24,23 @@ def click_on_page(num_clicks, **kwargs):
         a) record additional sites visited as a result
         b) save downloads that occur in response
     """
-    # Recover linked URLs from file
     global linked_urls
-    try:
-        with open("linked_urls.txt", "r") as f:
-            linked_urls_json = json.load(f)
-            for key in linked_urls_json:
-                linked_urls[key] = set(linked_urls_json[key])
-    except OSError as e:
-        # File doesn't exist - hasn't been created yet
-        pass
+    # Recover linked URLs from file
+    # Only want 1 browser per run to write json to file
+    if kwargs['browser_params']['crawl_id'] % kwargs['manager_params']['num_browsers']:
+        try:
+            with open("linked_urls.txt", "r") as f:
+                linked_urls_json = json.load(f)
+                for key in linked_urls_json:
+                    linked_urls[key] = set(linked_urls_json[key])
+        except OSError as e:
+            # File doesn't exist - hasn't been created yet
+            pass
+        except ValueError as e:
+            global rename_count
+            rename_count += 1
+            # Some JSON decode error
+            os.rename("linked_urls.txt", "linked_urls_old" + str(rename_count) + ".txt")
     driver = kwargs['driver']
     driver.set_page_load_timeout(200) # This function can take awhile
     print("num_clicks requested:" + str(num_clicks))
@@ -58,16 +66,23 @@ def click_on_page(num_clicks, **kwargs):
                 if driver.current_url != original_url:
                     driver.maximize_window()
                     break
-            time.sleep(5)
+            time.sleep(2)
             print("Hidden redirect detected! URL: " + driver.current_url)
             linked_urls[original_url].add(driver.current_url)
             #Insert analysis of extra site here?
             driver.close()
-            if len(driver.window_handles) > 1:
-                print("ERROR closing tab")
+            close_count = 0
+            while len(driver.window_handles) > 1:
+                close_count += 1
+                driver.switch_to.window(driver.window_handles[0])
                 driver.close()
+                print("Closing extra tab")
+                if close_count > 5:
+                    # Must be in a loop or something, or close is failing
+                    break
             driver.switch_to.window(driver.window_handles[0])
-            time.sleep(5)
+            if close_count > 1:
+                driver.get(original_url)
         else:
             print("No full screen redirect to new tab found.")
             # Now, check if click navigated me to a new website
@@ -87,7 +102,7 @@ def click_on_page(num_clicks, **kwargs):
     ]
     linked_urls[original_url].update(link_urls)
     #print("Directly linked urls:" + str(link_urls))
-    print("linked urls dict: " + str(linked_urls))
+    #print("linked urls dict: " + str(linked_urls))
 
     # Store updated JSON of linked_urls
     # First, must convert all sets to lists
@@ -184,7 +199,7 @@ def main():
     geo.close()
 
     # TODO: Some check that inspection was successful
-    if False:
+    if True:
         update_last_scanned(before_scan_time)
 
 
