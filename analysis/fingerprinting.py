@@ -51,6 +51,62 @@ def query_javascript(conn, where):
     return (count, c.execute(query))
 
 
+def get_webrtc_fingerprinting():
+    """Return the sites which exhibit WebRTC fingerprinting."""
+
+    try:
+        with open("cache/webrtc_fingerprinting.pkl", "rb") as f:
+            fingerprinting = pickle.load(f)
+            return fingerprinting
+    except FileNotFoundError:
+        conn = sqlite3.connect(DBNAME)
+        temp = dict()
+        fingerprinting = set()
+
+        count, rows = query_javascript(
+            conn,
+            """WHERE j.symbol LIKE '%RTCPeerConnection.localDescription%'
+               ORDER BY s.visit_id
+            """,
+        )
+        with tqdm(total=count) as pbar:
+            for row in rows:
+                (visit_id, site_url, script_url, symbol, operation, value, args) = row
+                pbar.update(1)
+
+                if site_url not in temp:
+                    temp[site_url] = dict()
+
+                if "symbols" not in temp[site_url]:
+                    temp[site_url]["symbols"] = dict()
+
+                if symbol not in temp[site_url]["symbols"]:
+                    temp[site_url]["symbols"][symbol] = dict()
+
+                if operation not in temp[site_url]["symbols"][symbol]:
+                    temp[site_url]["symbols"][symbol][operation] = []
+
+                temp[site_url]["symbols"][symbol][operation].append((value, args))
+
+        conn.close()
+
+        for key, value in tqdm(temp.items()):
+            base_url = get_base_url(key)
+
+            if base_url in fingerprinting:
+                continue
+
+            # Check for fingerprinting. If yes, add to set
+            calls = temp[key]["symbols"]
+
+            fingerprinting.add(base_url)
+
+        with open("cache/webrtc_fingerprinting.pkl", "wb") as fp:
+            pickle.dump(fingerprinting, fp)
+
+        return fingerprinting
+
+
 def get_font_fingerprinting():
     """Return javascript which calls `measureText` method at least 50 times.
 
@@ -285,11 +341,14 @@ def main():
     for site in canvas:
         print(f"{site}")
 
-    print("\n")
-
     font = get_font_fingerprinting()
-    print("Font Fingerprinting:")
+    print("\nFont Fingerprinting:")
     for site in font:
+        print(f"{site}")
+
+    webrtc = get_webrtc_fingerprinting()
+    print("\nWebRTC Fingerprinting:")
+    for site in webrtc:
         print(f"{site}")
 
 
