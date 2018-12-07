@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
+import ast
 import logging
-import json
+import pickle
 import sqlite3
-from pprint import pprint
 from urllib.parse import urlparse
 
 from tqdm import tqdm
 
 logging.basicConfig(
     format="[%(asctime)s][%(levelname)s] %(name)s - %(message)s",
-    filename="cookies.log",
+    filename="fingerprinting.log",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ def get_base_url(url):
     return o.netloc
 
 
-def query_javascript_symbol(conn, symbol):
+def query_javascript(conn, where):
     """Return visit_id, cp_url, script_url, symbol, operation, value, args."""
     c = conn.cursor()
 
@@ -31,13 +31,10 @@ def query_javascript_symbol(conn, symbol):
         SELECT count(*)
         FROM site_visits AS s
         JOIN javascript as j ON s.visit_id = j.visit_id
-        WHERE j.symbol like '%{symbol}%';
+        {where};
         """
     ).fetchone()[0]
-    return (
-        count,
-        c.execute(
-            f"""
+    query = f"""
             SELECT
                     s.visit_id,
                     s.site_url,
@@ -48,52 +45,180 @@ def query_javascript_symbol(conn, symbol):
                     j.arguments
             FROM site_visits AS s
             JOIN javascript as j ON s.visit_id = j.visit_id
-            WHERE j.symbol like '%{symbol}%';
+            {where};
             """
-        ),
-    )
+    logger.info(f"SQL Query: {query}")
+    return (count, c.execute(query))
 
 
-def get_font_fingerprinting():
+def get_canvas_fingerprinting():
     """Return javascript which calls `measureText` method at least 50 times.
 
     The `measureText` method should be called on the same text string.
     """
 
     try:
-        with open("cache/font_fingerprinting.json") as handle:
-            fingerprinting = json.loads(handle.read())
+        with open("cache/canvas_fingerprinting.pkl", "rb") as f:
+            fingerprinting = pickle.load(f)
             return fingerprinting
     except FileNotFoundError:
         conn = sqlite3.connect(DBNAME)
-        fingerprinting = dict()
+        temp = dict()
+        fingerprinting = set()
 
-        count, rows = query_javascript_symbol(conn, "window.navigator.userAgent")
+        count, rows = query_javascript(
+            conn,
+            """WHERE j.symbol LIKE '%HTMLCanvasElement%'
+                     OR j.symbol LIKE '%CanvasRenderingContext2D%'
+               ORDER BY s.visit_id
+            """,
+        )
         with tqdm(total=count) as pbar:
             for row in rows:
-                (
-                    visit_id,
-                    site_url,
-                    script_url,
-                    symbol,
-                    operation,
-                    value,
-                    arguments,
-                ) = row
-
-                base_url = get_base_url(site_url)
+                (visit_id, site_url, script_url, symbol, operation, value, args) = row
                 pbar.update(1)
 
+                # Skip irrelevant symbols
+                if not any(
+                    s in symbol
+                    for s in [
+                        "font",
+                        "fillText",
+                        "fillStyle",
+                        "height",
+                        "width",
+                        "toDataURL",
+                        "getImageData",
+                        "save",
+                        "restore",
+                        "addEventListener",
+                    ]
+                ):
+                    continue
+
+                if site_url not in temp:
+                    temp[site_url] = dict()
+
+                if "symbols" not in temp[site_url]:
+                    temp[site_url]["symbols"] = dict()
+
+                if symbol not in temp[site_url]["symbols"]:
+                    temp[site_url]["symbols"][symbol] = dict()
+
+                if operation not in temp[site_url]["symbols"][symbol]:
+                    temp[site_url]["symbols"][symbol][operation] = []
+
+                temp[site_url]["symbols"][symbol][operation].append((value, args))
+
         conn.close()
-        with open("cache/font_fingerprinting.json", "w") as fp:
-            json.dump(fingerprinting, fp)
+
+        for key, value in tqdm(temp.items()):
+            base_url = get_base_url(key)
+
+            if base_url in fingerprinting:
+                continue
+
+            # Check for fingerprinting. If yes, add to set
+
+            # MUST NOT call any of these
+            if any(
+                s in temp[key]["symbols"].keys()
+                for s in [
+                    "CanvasRenderingContext2D.save",
+                    "CanvasRenderingContext2D.restore",
+                    "HTMLCanvasElement.addEventListener",
+                ]
+            ):
+                continue
+
+            # MUST call one of these
+            if not any(
+                s in temp[key]["symbols"].keys()
+                for s in [
+                    "CanvasRenderingContext2D.getImageData",
+                    "HTMLCanvasElement.toDataURL",
+                ]
+            ):
+                continue
+
+            # MUST call one of these
+            if not any(
+                s in temp[key]["symbols"].keys()
+                for s in [
+                    "CanvasRenderingContext2D.fillStyle",
+                    "CanvasRenderingContext2D.fillText",
+                ]
+            ):
+                continue
+
+            calls = temp[key]["symbols"]
+
+            # MUST NOT have height and width below 16px
+            try:
+                if any(
+                    int(val[0]) <= 16 for val in calls["HTMLCanvasElement.width"]["set"]
+                ):
+                    continue
+                if any(
+                    int(val[0]) <= 16
+                    for val in calls["HTMLCanvasElement.height"]["set"]
+                ):
+                    continue
+            except KeyError:
+                # Assuming the default canvas sive of 300x150px
+                pass
+
+            # If using getImageData, must get image > 16 x 16
+            try:
+                dims = calls["CanvasRenderingContext2D.getImageData"]["call"]
+                too_small = True
+                for val, args in dims:
+                    args = ast.literal_eval(args)
+                    if args["2"] >= 16 and args["3"] >= 16:
+                        too_small = False
+                        break
+                if too_small:
+                    continue
+            except KeyError:
+                pass
+
+            # Finally, must write text to canvas with two colors or 10+ chars
+            too_small = True
+            try:
+                cs = calls["CanvasRenderingContext2D.fillText"]["call"]
+                total_chars = 0
+                for val, args in cs:
+                    args = ast.literal_eval(args)
+                    total_chars += len(args["0"])
+                    if total_chars >= 10:
+                        too_small = False
+                        break
+            except KeyError:
+                pass
+            try:
+                if len(calls["CanvasRenderingContext2D.fillStyle"]["set"]) >= 2:
+                    too_small = False
+            except KeyError:
+                pass
+
+            if too_small:
+                continue
+
+            fingerprinting.add(base_url)
+
+        with open("cache/canvas_fingerprinting.pkl", "wb") as fp:
+            pickle.dump(fingerprinting, fp)
+
+        print("Canvas Fingerprinting:")
+        for site in fingerprinting:
+            print(f"{site}")
 
         return fingerprinting
 
 
 def main():
 
-    get_font_fingerprinting()
+    get_canvas_fingerprinting()
 
 
 if __name__ == "__main__":
