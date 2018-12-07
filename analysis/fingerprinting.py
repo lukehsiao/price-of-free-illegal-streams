@@ -51,11 +51,77 @@ def query_javascript(conn, where):
     return (count, c.execute(query))
 
 
-def get_canvas_fingerprinting():
+def get_font_fingerprinting():
     """Return javascript which calls `measureText` method at least 50 times.
 
     The `measureText` method should be called on the same text string.
     """
+
+    try:
+        with open("cache/font_fingerprinting.pkl", "rb") as f:
+            fingerprinting = pickle.load(f)
+            return fingerprinting
+    except FileNotFoundError:
+        conn = sqlite3.connect(DBNAME)
+        temp = dict()
+        fingerprinting = set()
+
+        count, rows = query_javascript(
+            conn,
+            """WHERE j.symbol LIKE '%CanvasRenderingContext2D.font%'
+                     OR j.symbol LIKE '%CanvasRenderingContext2D.measureText%'
+               ORDER BY s.visit_id
+            """,
+        )
+        with tqdm(total=count) as pbar:
+            for row in rows:
+                (visit_id, site_url, script_url, symbol, operation, value, args) = row
+                pbar.update(1)
+
+                if site_url not in temp:
+                    temp[site_url] = dict()
+
+                if "symbols" not in temp[site_url]:
+                    temp[site_url]["symbols"] = dict()
+
+                if symbol not in temp[site_url]["symbols"]:
+                    temp[site_url]["symbols"][symbol] = dict()
+
+                if operation not in temp[site_url]["symbols"][symbol]:
+                    temp[site_url]["symbols"][symbol][operation] = []
+
+                temp[site_url]["symbols"][symbol][operation].append((value, args))
+
+        conn.close()
+
+        for key, value in tqdm(temp.items()):
+            base_url = get_base_url(key)
+
+            if base_url in fingerprinting:
+                continue
+
+            # Check for fingerprinting. If yes, add to set
+            calls = temp[key]["symbols"]
+
+            try:
+                if len(calls["CanvasRenderingContext2D.measureText"]["call"]) >= 50:
+                    import pdb
+
+                    pdb.set_trace()
+            except KeyError:
+                # no call to measureText
+                continue
+
+            fingerprinting.add(base_url)
+
+        with open("cache/font_fingerprinting.pkl", "wb") as fp:
+            pickle.dump(fingerprinting, fp)
+
+        return fingerprinting
+
+
+def get_canvas_fingerprinting():
+    """Find channel providers that do canvas fingerprinting."""
 
     try:
         with open("cache/canvas_fingerprinting.pkl", "rb") as f:
@@ -209,16 +275,22 @@ def get_canvas_fingerprinting():
         with open("cache/canvas_fingerprinting.pkl", "wb") as fp:
             pickle.dump(fingerprinting, fp)
 
-        print("Canvas Fingerprinting:")
-        for site in fingerprinting:
-            print(f"{site}")
-
         return fingerprinting
 
 
 def main():
 
-    get_canvas_fingerprinting()
+    canvas = get_canvas_fingerprinting()
+    print("Canvas Fingerprinting:")
+    for site in canvas:
+        print(f"{site}")
+
+    print("\n")
+
+    font = get_font_fingerprinting()
+    print("Font Fingerprinting:")
+    for site in font:
+        print(f"{site}")
 
 
 if __name__ == "__main__":
