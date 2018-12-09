@@ -27,7 +27,7 @@ def get_base_url(url):
 def get_third_parties(easylist):
 
     try:
-        with open("third_parties.json") as handle:
+        with open("cache/thid_parties.json") as handle:
             third_parties = json.loads(handle.read())
             return third_parties
     except FileNotFoundError:
@@ -77,7 +77,7 @@ def get_third_parties(easylist):
                     third_parties[base_url]["total_trackers"] += 1
 
         conn.close()
-        with open("third_parties.json", "w") as fp:
+        with open("cache/thid_parties.json", "w") as fp:
             json.dump(third_parties, fp)
         return third_parties
 
@@ -85,7 +85,7 @@ def get_third_parties(easylist):
 def get_cookies(easylist):
 
     try:
-        with open("cookies.json") as handle:
+        with open("cache/cookies.json") as handle:
             cookies = json.loads(handle.read())
             return cookies
     except FileNotFoundError:
@@ -134,7 +134,7 @@ def get_cookies(easylist):
                     cookies[base_url]["total_trackers"] += 1
 
         conn.close()
-        with open("cookies.json", "w") as fp:
+        with open("cache/cookies.json", "w") as fp:
             json.dump(cookies, fp)
     return cookies
 
