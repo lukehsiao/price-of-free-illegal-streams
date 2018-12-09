@@ -125,6 +125,7 @@ def main():
     NUM_BROWSERS = 3
     before_scan_time = int(time.time())
     sites = get_urls_to_inspect()
+
     #sites = sites[:5]
     # print(sites)
     #sites = ['https://www.ibrod.tv/stream/ibrodtv46.html',
@@ -132,50 +133,65 @@ def main():
     #         'http://www.princeton.edu',
     #         'http://citp.princeton.edu/']
 
-    # Loads the manager preference and 3 copies of the default browser dictionaries
-    manager_params, browser_params = TaskManager.load_default_params(NUM_BROWSERS)
+    not_finished = True
 
-    # Update browser configuration (use this for per-browser settings)
-    for i in range(NUM_BROWSERS):
-        # Record HTTP Requests and Responses
-        browser_params[i]["http_instrument"] = True
-        browser_params[i]["cookie_instrument"] = True
-        # Enable flash for all three browsers
-        browser_params[i]["disable_flash"] = False
-        # Record js
-        browser_params[i]["js_instrument"] = True
-        browser_params[i]["headless"] = True
+    # Wrap all selenium code in try block to skip websites that cause exceptions
+    # Any re-run of this loop is effectively rerunning the whole OpenWPM part of this script
+    while(not_finished):
+        not_finished = False
+        try:
 
-    # Update TaskManager configuration (use this for crawl-wide settings)
-    dir_path = os.path.dirname(os.path.realpath(__file__)) + "/../data/"
-    manager_params["data_directory"] = dir_path
-    manager_params["log_directory"] = dir_path
+            # Loads the manager preference and 3 copies of the default browser dictionaries
+            manager_params, browser_params = TaskManager.load_default_params(NUM_BROWSERS)
 
-    # Instantiates the measurement platform
-    # Commands time out by default after 60 seconds
-    manager = TaskManager.TaskManager(manager_params, browser_params)
+            # Update browser configuration (use this for per-browser settings)
+            for i in range(NUM_BROWSERS):
+                # Record HTTP Requests and Responses
+                browser_params[i]["http_instrument"] = True
+                browser_params[i]["cookie_instrument"] = True
+                # Enable flash for all three browsers
+                browser_params[i]["disable_flash"] = False
+                # Record js
+                browser_params[i]["js_instrument"] = True
+                browser_params[i]["headless"] = True
 
-    # Visits the sites with all browsers simultaneously
-    for idx, site in enumerate(sites):
-        command_sequence = CommandSequence.CommandSequence(site)
+            # Update TaskManager configuration (use this for crawl-wide settings)
+            dir_path = os.path.dirname(os.path.realpath(__file__)) + "/../data/"
+            manager_params["data_directory"] = dir_path
+            manager_params["log_directory"] = dir_path
 
-        # Start by visiting the page and sleeping for `sleep` seconds
-        command_sequence.get(sleep=5, timeout=100)
+            # Instantiates the measurement platform
+            # Commands time out by default after 60 seconds
+            manager = TaskManager.TaskManager(manager_params, browser_params)
 
-        # Save screenshot
-        command_sequence.save_screenshot(str(idx), timeout=100)
+            # Visits the sites with all browsers simultaneously
+            for idx, site in enumerate(sites):
+                command_sequence = CommandSequence.CommandSequence(site)
 
-        # Save source
-        command_sequence.dump_page_source(str(idx), timeout=100)
+                # Start by visiting the page and sleeping for `sleep` seconds
+                command_sequence.get(sleep=5, timeout=100)
 
-        # Click on links on page and record external links
-        command_sequence.run_custom_function(click_on_page, (2,), 120)
+                # Save screenshot
+                command_sequence.save_screenshot(str(idx), timeout=100)
 
-        # dump_profile_cookies/dump_flash_cookies closes the current tab.
-        command_sequence.dump_profile_cookies(120)
+                # Save source
+                command_sequence.dump_page_source(str(idx), timeout=100)
 
-        # index='**' synchronizes visits between the three browsers
-        manager.execute_command_sequence(command_sequence, index="**")
+                # Click on links on page and record external links
+                command_sequence.run_custom_function(click_on_page, (2,), 120)
+
+                # dump_profile_cookies/dump_flash_cookies closes the current tab.
+                command_sequence.dump_profile_cookies(120)
+
+                # index='**' synchronizes visits between the three browsers
+                manager.execute_command_sequence(command_sequence, index="**")
+        except Exception:
+            sites = sites[idx + 1:]
+            if len(sites) > 2:
+                not_finished = True
+            print("Caught an exception, " + str(len(sites)) + " remaining.")
+            manager.close()
+            
 
     # Now, visit all externally referenced URLs from the original websites w/o custom functions
     '''
@@ -195,6 +211,7 @@ def main():
     '''
 
     # Shuts down the browsers and waits for the data to finish logging
+    print("Finished scanning sites")
     manager.close()
     geo.close()
 
