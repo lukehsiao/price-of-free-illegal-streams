@@ -105,9 +105,18 @@ def main():
 
     geo = GeoLocate()
     # The list of sites that we wish to crawl
+    # The sites below have direct links to pages that stream video, where nothing changes based on auth
+    # other than whether the video plays.
+    # The NHL link is transient and must be updated pre-run
+    # Other common sports streaming options such as nba league pass, nfl gamepass, etc. require a user
+    # be authenticated to access the actual streaming page, so we do not consider those.
     sites = ['http://www.espn.com/watch/',
              'https://www.foxsportsgo.com/',
-             'https://www.cbssports.com/live/']
+             'https://www.cbssports.com/live/',
+             'https://www.tntdrama.com/watchtnt/east',
+             'http://www.nba.com/nbatv',
+             'https://www.willow.tv/',
+             'https://www.nhl.com/tv/2018020458/221-2001288/63128703#']
 
     NUM_BROWSERS = 3
 
