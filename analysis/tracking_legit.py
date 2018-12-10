@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+
+'''
+This script is very similar to tracking.py, but works on the database of legimiate websites. Other than accessing different
+files, it also eschews logic for grabbing the base_url, because for the legitimate websites the base url is often not even
+directly associated with streaming, but with news etc.
+'''
+
 import logging
 import json
 import sqlite3
@@ -16,18 +23,18 @@ logger = logging.getLogger(__name__)
 
 DELIMITER = "~^~"
 
-DBNAME = "../data/crawl-data.sqlite"
+DBNAME = "../data_real_sites/crawl-data.sqlite"
 
 
 def get_base_url(url):
     o = urlparse(url)
-    return o.netloc
+    return o.netloc + o.path
 
 
 def get_third_parties(easylist):
 
     try:
-        with open("cache/thid_parties.json") as handle:
+        with open("cache/thid_parties_real.json") as handle:
             third_parties = json.loads(handle.read())
             return third_parties
     except FileNotFoundError:
@@ -59,6 +66,7 @@ def get_third_parties(easylist):
 
             requests = requests.split(DELIMITER)
 
+
             logger.debug("{}: {} requests".format(site_url, len(requests)))
 
             if base_url not in third_parties:
@@ -77,7 +85,7 @@ def get_third_parties(easylist):
                     third_parties[base_url]["total_trackers"] += 1
 
         conn.close()
-        with open("cache/thid_parties.json", "w") as fp:
+        with open("cache/thid_parties_real.json", "w") as fp:
             json.dump(third_parties, fp)
         return third_parties
 
@@ -85,7 +93,7 @@ def get_third_parties(easylist):
 def get_cookies(easylist):
 
     try:
-        with open("cache/cookies.json") as handle:
+        with open("cache/cookies_real.json") as handle:
             cookies = json.loads(handle.read())
             return cookies
     except FileNotFoundError:
@@ -134,7 +142,7 @@ def get_cookies(easylist):
                     cookies[base_url]["total_trackers"] += 1
 
         conn.close()
-        with open("cache/cookies.json", "w") as fp:
+        with open("cache/cookies_real.json", "w") as fp:
             json.dump(cookies, fp)
     return cookies
 
@@ -200,7 +208,9 @@ def main():
     latex_cookies(cookies)
 
     third_parties = get_third_parties(easylist)
+    print()
     latex_third_parties(third_parties)
+    print()
     latex_most_common_trackers(third_parties)
 
 
