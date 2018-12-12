@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import os
+import numpy as np
 import psycopg2
 import pickle
 import logging
 import json
 import sqlite3
+import matplotlib.pyplot as plt
 from pprint import pprint
 from urllib.parse import urlparse
 
@@ -298,6 +300,54 @@ def latex_privacy_scores(scores):
         print("\\url{{{}}} & {:.2f} \\\\".format(key, value))
 
 
+def privacy_vs_upvotes(scores):
+    # Init db connection
+    conn = psycopg2.connect(
+        host="localhost",
+        port="6543",
+        dbname="postgres",
+        user="postgres",
+        password=GCSQL_PWD,
+    )
+    cur = conn.cursor()
+    get_votes_cmd = "SELECT AVG(upvotes) FROM stream_urls WHERE aggregator = 'reddit' AND base_url = (%s)"
+    all_cps = {}
+    for key in scores:
+        cur.execute(get_votes_cmd, (key,))
+        rows = cur.fetchall()
+        if not rows[0][0]:
+            # Stream not from reddit!
+            continue
+        avg_upvotes = rows[0][0]
+        all_cps[key] = (avg_upvotes, scores[key])
+
+    return all_cps
+
+
+def latex_privacy_upvotes(scores):
+    all_cp_scores = []
+    for key in scores:
+        all_cp_scores.append((key, scores[key][0], scores[key][1]))
+    all_cp_scores.sort(key=lambda x: x[1], reverse=True)
+    for key, votes, score in all_cp_scores:
+        print("{:.2f} {:.2f} \\\\".format(votes, score))
+
+
+    # Now, plot this data:
+    colors = (0,0,0)
+    y = [float(x[1]) for x in all_cp_scores]
+    x = [float(x[2]) for x in all_cp_scores]
+    plt.scatter(x, y, c=colors, alpha=0.5)
+    z = np.polyfit(x, y, 1)
+    p = np.poly1d(z)
+    plt.plot(x, p(x), "r--")
+    plt.title('Upvotes vs. Privacy Score')
+    plt.ylabel('Average Upvotes')
+    plt.xlabel('Privacy Score')
+    plt.show()
+
+
+
 def main():
 
     easylist = EasyList()
@@ -326,6 +376,11 @@ def main():
 
     print("Top 10 aggs by privacy score:")
     latex_privacy_scores(agg_scores)
+    print()
+
+    vote_scores = privacy_vs_upvotes(scores)
+    print("Privacy score vs. upvotes:")
+    latex_privacy_upvotes(vote_scores)
 
 
 if __name__ == "__main__":
