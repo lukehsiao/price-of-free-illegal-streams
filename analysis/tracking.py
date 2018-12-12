@@ -3,6 +3,7 @@ import os
 import numpy as np
 import psycopg2
 import pickle
+from tqdm import tqdm
 import logging
 import json
 import sqlite3
@@ -42,49 +43,57 @@ def get_third_parties(easylist):
         third_parties = dict()
         c = conn.cursor()
 
-        for row in c.execute(
-            """
-            SELECT
-                s.visit_id,
-                s.site_url,
-                (
-                    SELECT group_concat(url, '{}')
-                    FROM http_requests AS r
-                    WHERE s.visit_id = r.visit_id AND r.is_third_party_channel = 1
-                ) AS r_urls
+        count = c.execute(
+            f"""
+            SELECT count(*)
             FROM site_visits AS s;
-            """.format(
-                DELIMITER
-            )
-        ):
-            (visit_id, site_url, requests) = row
+            """
+        ).fetchone()[0]
+        with tqdm(total=count) as pbar:
+            for row in c.execute(
+                """
+                SELECT
+                    s.visit_id,
+                    s.site_url,
+                    (
+                        SELECT group_concat(url, '{}')
+                        FROM http_requests AS r
+                        WHERE s.visit_id = r.visit_id AND r.is_third_party_channel = 1
+                    ) AS r_urls
+                FROM site_visits AS s;
+                """.format(
+                    DELIMITER
+                )
+            ):
+                pbar.update(1)
+                (visit_id, site_url, requests) = row
 
-            if not requests:
-                continue
+                if not requests:
+                    continue
 
-            base_url = get_base_url(site_url)
+                base_url = get_base_url(site_url)
 
-            requests = requests.split(DELIMITER)
+                requests = requests.split(DELIMITER)
 
-            logger.debug("{}: {} requests".format(site_url, len(requests)))
+                logger.debug("{}: {} requests".format(site_url, len(requests)))
 
-            if base_url not in third_parties:
-                third_parties[base_url] = dict()
-                third_parties[base_url]["times_visited"] = 0
+                if base_url not in third_parties:
+                    third_parties[base_url] = dict()
+                    third_parties[base_url]["times_visited"] = 0
 
-            third_parties[base_url]["times_visited"] += 1
+                third_parties[base_url]["times_visited"] += 1
 
-            if "total_requests" not in third_parties[base_url]:
-                third_parties[base_url]["requests"] = dict()
-                third_parties[base_url]["total_requests"] = 0
-                third_parties[base_url]["total_trackers"] = 0
+                if "total_requests" not in third_parties[base_url]:
+                    third_parties[base_url]["requests"] = dict()
+                    third_parties[base_url]["total_requests"] = 0
+                    third_parties[base_url]["total_trackers"] = 0
 
-            for request in requests:
-                is_tracker = easylist.rules.should_block(request)
-                third_parties[base_url]["requests"][request] = is_tracker
-                third_parties[base_url]["total_requests"] += 1
-                if is_tracker:
-                    third_parties[base_url]["total_trackers"] += 1
+                for request in requests:
+                    is_tracker = easylist.rules.should_block(request)
+                    third_parties[base_url]["requests"][request] = is_tracker
+                    third_parties[base_url]["total_requests"] += 1
+                    if is_tracker:
+                        third_parties[base_url]["total_trackers"] += 1
 
         conn.close()
         with open("cache/thid_parties.json", "w") as fp:
