@@ -8,6 +8,8 @@ GCSQL_PWD = os.environ["GCSQL_PWD"]
 
 if __name__ == "__main__":
 
+    num_rows = 10
+
     third_parties = {}
     cookies = {}
     with open("cache/thid_parties.json", "r") as f:
@@ -47,14 +49,47 @@ if __name__ == "__main__":
             )
 
     all_aggs_list = []
-    print(all_aggs)
+ #   print(all_aggs)
     for key in all_aggs:
         value = all_aggs[key]
         percentage = value[1] / value[0]
         all_aggs_list.append((key, value[0], value[1], percentage))
 
     all_aggs_list.sort(key=lambda x: x[3], reverse=True)
-    for agg, d, t, p in all_aggs_list:  # [:num_rows]:
+    print("Requests table for aggregators:")
+    for agg, d, t, p in all_aggs_list[:num_rows]:  # [:num_rows]:
+        print("{} & {} & {} & {} \\\\".format(agg, d, t, p))
+    print()
+
+    all_aggs2 = {}
+    for key, value in cookies.items():
+        print(key)
+        requests = value["total_domains"]
+        trackers = value["total_trackers"]
+        # percentage = trackers / requests
+
+        cur.execute(get_agg_cmd, (key,))
+        rows = cur.fetchall()
+        aggregator = rows[0][0]
+        print(aggregator)
+        if aggregator not in all_aggs2:
+            all_aggs2[aggregator] = (requests, trackers)
+        else:
+            all_aggs2[aggregator] = (
+                all_aggs2[aggregator][0] + requests,
+                all_aggs2[aggregator][1] + trackers,
+            )
+
+    all_aggs2_list = []
+    #print(all_aggs2)
+    for key in all_aggs2:
+        value = all_aggs2[key]
+        percentage = value[1] / value[0]
+        all_aggs2_list.append((key, value[0], value[1], percentage))
+
+    all_aggs2_list.sort(key=lambda x: x[3], reverse=True)
+    print("Cookie table for aggregators")
+    for agg, d, t, p in all_aggs2_list[:num_rows]:  # [:num_rows]:
         print("{} & {} & {} & {} \\\\".format(agg, d, t, p))
 
     cur.close()
