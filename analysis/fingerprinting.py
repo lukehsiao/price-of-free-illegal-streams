@@ -161,9 +161,9 @@ def get_font_fingerprinting():
 
             try:
                 if len(calls["CanvasRenderingContext2D.measureText"]["call"]) >= 50:
-                    import pdb
-
-                    pdb.set_trace()
+                    pass
+                else:
+                    continue
             except KeyError:
                 # no call to measureText
                 continue
