@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import os
+import psycopg2
+import pickle
 import logging
 import json
 import sqlite3
@@ -6,6 +9,8 @@ from pprint import pprint
 from urllib.parse import urlparse
 
 from utils import EasyList
+
+GCSQL_PWD = os.environ["GCSQL_PWD"]
 
 logging.basicConfig(
     format="[%(asctime)s][%(levelname)s] %(name)s - %(message)s",
@@ -63,6 +68,9 @@ def get_third_parties(easylist):
 
             if base_url not in third_parties:
                 third_parties[base_url] = dict()
+                third_parties[base_url]["times_visited"] = 0
+
+            third_parties[base_url]["times_visited"] += 1
 
             if "total_requests" not in third_parties[base_url]:
                 third_parties[base_url]["requests"] = dict()
@@ -120,6 +128,9 @@ def get_cookies(easylist):
 
             if base_url not in cookies:
                 cookies[base_url] = dict()
+                cookies[base_url]["times_visited"] = 0
+
+            cookies[base_url]["times_visited"] += 1
 
             if "total_domains" not in cookies[base_url]:
                 cookies[base_url]["domains"] = dict()
@@ -144,14 +155,17 @@ def latex_cookies(cookies, num_rows=10):
     for key, value in cookies.items():
         domains = value["total_domains"]
         trackers = value["total_trackers"]
+        trackers_per_page = trackers / value["times_visited"]
         percentage = (trackers / domains) * 100
-        all_cps.append((key, domains, trackers, percentage))
+        all_cps.append((key, domains, trackers, trackers_per_page, percentage))
 
     # sort by percentage
     all_cps.sort(key=lambda x: x[3], reverse=True)
 
-    for cp, d, t, p in all_cps[:num_rows]:
-        print("\\url{{{}}} & {} & {} & {:.2f} \\\\".format(cp, d, t, p))
+    for cp, d, t, ttp, p in all_cps[:num_rows]:
+        print("\\url{{{}}} & {} & {} & {:.2f} & {:.2f} \\\\".format(cp, d, t, ttp, p))
+
+    return all_cps
 
 
 def latex_third_parties(third_parties, num_rows=10):
@@ -159,14 +173,16 @@ def latex_third_parties(third_parties, num_rows=10):
     for key, value in third_parties.items():
         requests = value["total_requests"]
         trackers = value["total_trackers"]
+        trackers_per_page = trackers / value["times_visited"]
         percentage = (trackers / requests) * 100
-        all_cps.append((key, requests, trackers, percentage))
+        all_cps.append((key, requests, trackers, trackers_per_page, percentage))
 
     # sort by percentage
-    all_cps.sort(key=lambda x: x[3], reverse=True)
+    all_cps.sort(key=lambda x: x[4], reverse=True)
 
-    for cp, d, t, p in all_cps[:num_rows]:
-        print("\\url{{{}}} & {} & {} & {:.2f} \\\\".format(cp, d, t, p))
+    for cp, d, t, ttp, p in all_cps[:num_rows]:
+        print("\\url{{{}}} & {} & {} & {:.2f} & {:.2f} \\\\".format(cp, d, t, ttp, p))
+    return all_cps
 
 
 def latex_most_common_trackers(third_parties, num_rows=10):
@@ -192,16 +208,124 @@ def latex_most_common_trackers(third_parties, num_rows=10):
         print("\\url{{{}}} & {} & {:.2f} \\\\".format(d, v, p))
 
 
+def calc_privacy_score(tp_list, cookie_list, num_rows=10):
+    # First, import the fingerprinting data from the cache
+    try:
+        with open("cache/canvas_fingerprinting.pkl", "rb") as f:
+            canvas_fingerprinting = pickle.load(f)
+
+        with open("cache/webrtc_fingerprinting.pkl", "rb") as f:
+            webrtc_fingerprinting = pickle.load(f)
+
+        with open("cache/font_fingerprinting.pkl", "rb") as f:
+            font_fingerprinting = pickle.load(f)
+
+        scores = {}
+        for cp, requests, trackers, trackers_per_page, percentage in tp_list:
+            scores[cp] = 0.5 * trackers_per_page
+
+        for cp, d, t, cookies_per_page, p in cookie_list:
+            if cp in scores:
+                scores[cp] += 3*cookies_per_page
+            else:
+                scores[cp] = 3*cookies_per_page
+
+        cf = 0
+        ff = 0
+        wf = 0
+        for key in scores:
+            if key in canvas_fingerprinting:
+                cf += 1
+                scores[key] += 5
+            if key in font_fingerprinting:
+                ff += 1
+                scores[key] += 5
+            if key in webrtc_fingerprinting:
+                wf += 1
+                scores[key] += 5
+        if cf != len(canvas_fingerprinting):
+            print(f"Missing canvas fingerprint match! {len(canvas_fingerprinting) - cf} more than expected")
+
+        if ff != len(font_fingerprinting):
+            print(f"Missing font fingerprint match! {len(font_fingerprinting) - ff} more than expected")
+
+        if wf != len(webrtc_fingerprinting):
+            print(f"Missing webrt fingerprint match! {len(webrtc_fingerprinting) - wf} more than expected")
+
+        return scores
+
+    except FileNotFoundError:
+        print("Please run fingerprinting.py prior to calculating the privacy score.")
+
+        return {}
+
+
+def agg_privacy_scores(scores):
+    # Init db connection
+    conn = psycopg2.connect(
+        host="localhost",
+        port="6543",
+        dbname="postgres",
+        user="postgres",
+        password=GCSQL_PWD,
+    )
+    cur = conn.cursor()
+    get_agg_cmd = "SELECT aggregator FROM stream_urls WHERE base_url = (%s)"
+    all_aggs = {}
+    for key in scores:
+        cur.execute(get_agg_cmd, (key,))
+        rows = cur.fetchall()
+        aggregator = rows[0][0]
+        if aggregator not in all_aggs:
+            all_aggs[aggregator] = (scores[key], 1)
+        else:
+            all_aggs[aggregator] = (
+                all_aggs[aggregator][0] + scores[key],
+                all_aggs[aggregator][1] + 1,
+            )
+    agg_score_dict = {}
+    for key in all_aggs:
+        agg_score_dict[key] = all_aggs[key][0] / all_aggs[key][1]
+    return agg_score_dict
+
+
+def latex_privacy_scores(scores):
+    all_cp_scores = []
+    for key in scores:
+        all_cp_scores.append((key, scores[key]))
+    all_cp_scores.sort(key=lambda x: x[1], reverse=True)
+    for key, value in all_cp_scores:
+        print("\\url{{{}}} & {:.2f} \\\\".format(key, value))
+
+
 def main():
 
     easylist = EasyList()
 
     cookies = get_cookies(easylist)
-    latex_cookies(cookies)
+    print("Tracking Cookies per CP: ")
+    all_cps_cook = latex_cookies(cookies)
+    print()
 
     third_parties = get_third_parties(easylist)
-    latex_third_parties(third_parties)
+
+    print("Tracking HTTP Requests per CP: ")
+    all_cps_tp = latex_third_parties(third_parties)
+    print()
+    print("Most common trackers accessed: ")
     latex_most_common_trackers(third_parties)
+    print()
+
+    scores = calc_privacy_score(all_cps_tp, all_cps_cook)
+
+    print("Top 10 CPs by privacy score:")
+    latex_privacy_scores(scores)
+    print()
+
+    agg_scores = agg_privacy_scores(scores)
+
+    print("Top 10 aggs by privacy score:")
+    latex_privacy_scores(agg_scores)
 
 
 if __name__ == "__main__":
