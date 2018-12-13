@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import concurrent.futures
 import json
 import logging
 import os
@@ -26,13 +27,34 @@ DELIMITER = "~^~"
 
 DBNAME = "../data/crawl-data.sqlite"
 
+EASYLIST = EasyList()
+
 
 def get_base_url(url):
     o = urlparse(url)
     return o.netloc
 
 
-def get_third_parties(easylist):
+def _process_row(row):
+    (visit_id, site_url, requests) = row
+
+    base_url = get_base_url(site_url)
+    total_requests = 0
+    total_trackers = 0
+
+    if not requests:
+        return (base_url, site_url, 0, 0)
+
+    for request in requests.split(DELIMITER):
+        is_tracker = EASYLIST.rules.should_block(request)
+        total_requests += 1
+        if is_tracker:
+            total_trackers += 1
+
+    return (base_url, site_url, total_requests, total_trackers)
+
+
+def get_third_parties():
 
     try:
         with open("cache/third_parties.json") as handle:
@@ -44,57 +66,51 @@ def get_third_parties(easylist):
         c = conn.cursor()
 
         count = c.execute("SELECT count(*) FROM site_visits AS s;").fetchone()[0]
-
-        with tqdm(total=count) as pbar:
-            c.execute(
-                """
-                SELECT
-                    s.visit_id,
-                    s.site_url,
-                    (
-                        SELECT group_concat(url, '{}')
-                        FROM http_requests AS r
-                        WHERE s.visit_id = r.visit_id AND r.is_third_party_channel = 1
-                    ) AS r_urls
-                FROM site_visits AS s;
-                """.format(
-                    DELIMITER
-                )
+        c.execute(
+            """
+            SELECT
+                s.visit_id,
+                s.site_url,
+                (
+                    SELECT group_concat(url, '{}')
+                    FROM http_requests AS r
+                    WHERE s.visit_id = r.visit_id AND r.is_third_party_channel = 1
+                ) AS r_urls
+            FROM site_visits AS s;
+            """.format(
+                DELIMITER
             )
+        )
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            with tqdm(total=count) as pbar:
+                while True:
+                    batch = c.fetchmany(size=5000)
+                    if not batch:
+                        break
+                    for (
+                        base_url,
+                        site_url,
+                        total_requests,
+                        total_trackers,
+                    ) in executor.map(_process_row, batch):
+                        pbar.update(1)
 
-            while True:
-                result = c.fetchmany(size=1000)
-                if not result:
-                    break
+                        if total_requests == 0:
+                            continue
 
-                for row in result:
-                    pbar.update(1)
-                    (visit_id, site_url, requests) = row
+                        if base_url not in third_parties:
+                            third_parties[base_url] = dict()
+                            third_parties[base_url]["times_visited"] = 0
 
-                    if not requests:
-                        continue
+                        third_parties[base_url]["times_visited"] += 1
 
-                    base_url = get_base_url(site_url)
+                        if "total_requests" not in third_parties[base_url]:
+                            third_parties[base_url]["requests"] = dict()
+                            third_parties[base_url]["total_requests"] = 0
+                            third_parties[base_url]["total_trackers"] = 0
 
-                    requests = requests.split(DELIMITER)
-
-                    if base_url not in third_parties:
-                        third_parties[base_url] = dict()
-                        third_parties[base_url]["times_visited"] = 0
-
-                    third_parties[base_url]["times_visited"] += 1
-
-                    if "total_requests" not in third_parties[base_url]:
-                        third_parties[base_url]["requests"] = dict()
-                        third_parties[base_url]["total_requests"] = 0
-                        third_parties[base_url]["total_trackers"] = 0
-
-                    for request in requests:
-                        is_tracker = easylist.rules.should_block(request)
-                        third_parties[base_url]["requests"][request] = is_tracker
-                        third_parties[base_url]["total_requests"] += 1
-                        if is_tracker:
-                            third_parties[base_url]["total_trackers"] += 1
+                        third_parties[base_url]["total_requests"] += total_requests
+                        third_parties[base_url]["total_trackers"] += total_trackers
 
         conn.close()
         with open("cache/third_parties.json", "w") as fp:
@@ -102,7 +118,7 @@ def get_third_parties(easylist):
         return third_parties
 
 
-def get_cookies(easylist):
+def get_cookies():
 
     try:
         with open("cache/cookies.json") as handle:
@@ -151,7 +167,7 @@ def get_cookies(easylist):
                     cookies[base_url]["total_trackers"] = 0
 
                 for cookie_domain in cookie_domains:
-                    is_tracker = easylist.rules.should_block(cookie_domain)
+                    is_tracker = EASYLIST.rules.should_block(cookie_domain)
                     cookies[base_url]["domains"][cookie_domain] = is_tracker
                     cookies[base_url]["total_domains"] += 1
                     if is_tracker:
@@ -365,14 +381,12 @@ def latex_privacy_upvotes(scores):
 
 def main():
 
-    easylist = EasyList()
-
-    cookies = get_cookies(easylist)
+    cookies = get_cookies()
     print("Tracking Cookies per CP: ")
     all_cps_cook = latex_cookies(cookies)
     print()
 
-    third_parties = get_third_parties(easylist)
+    third_parties = get_third_parties()
 
     print("Tracking HTTP Requests per CP: ")
     all_cps_tp = latex_third_parties(third_parties)
