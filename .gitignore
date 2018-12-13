@@ -2,6 +2,9 @@
 cloud_sql_proxy
 sports-streaming*.json
 
+analysis/cache/*.pkl
+analysis/cache/*.json
+
 .venv/
 .virtualenv/
 venv/
