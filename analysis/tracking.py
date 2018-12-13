@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
+import json
+import logging
 import os
+import pickle
+import sqlite3
+from urllib.parse import urlparse
+
+import matplotlib.pyplot as plt
 import numpy as np
 import psycopg2
-import pickle
 from tqdm import tqdm
-import logging
-import json
-import sqlite3
-import matplotlib.pyplot as plt
-from pprint import pprint
-from urllib.parse import urlparse
 
 from utils import EasyList
 
@@ -35,7 +35,7 @@ def get_base_url(url):
 def get_third_parties(easylist):
 
     try:
-        with open("cache/thid_parties.json") as handle:
+        with open("cache/third_parties.json") as handle:
             third_parties = json.loads(handle.read())
             return third_parties
     except FileNotFoundError:
@@ -43,14 +43,10 @@ def get_third_parties(easylist):
         third_parties = dict()
         c = conn.cursor()
 
-        count = c.execute(
-            f"""
-            SELECT count(*)
-            FROM site_visits AS s;
-            """
-        ).fetchone()[0]
+        count = c.execute("SELECT count(*) FROM site_visits AS s;").fetchone()[0]
+
         with tqdm(total=count) as pbar:
-            for row in c.execute(
+            c.execute(
                 """
                 SELECT
                     s.visit_id,
@@ -64,39 +60,44 @@ def get_third_parties(easylist):
                 """.format(
                     DELIMITER
                 )
-            ):
-                pbar.update(1)
-                (visit_id, site_url, requests) = row
+            )
 
-                if not requests:
-                    continue
+            while True:
+                result = c.fetchmany(size=1000)
+                if not result:
+                    break
 
-                base_url = get_base_url(site_url)
+                for row in result:
+                    pbar.update(1)
+                    (visit_id, site_url, requests) = row
 
-                requests = requests.split(DELIMITER)
+                    if not requests:
+                        continue
 
-                logger.debug("{}: {} requests".format(site_url, len(requests)))
+                    base_url = get_base_url(site_url)
 
-                if base_url not in third_parties:
-                    third_parties[base_url] = dict()
-                    third_parties[base_url]["times_visited"] = 0
+                    requests = requests.split(DELIMITER)
 
-                third_parties[base_url]["times_visited"] += 1
+                    if base_url not in third_parties:
+                        third_parties[base_url] = dict()
+                        third_parties[base_url]["times_visited"] = 0
 
-                if "total_requests" not in third_parties[base_url]:
-                    third_parties[base_url]["requests"] = dict()
-                    third_parties[base_url]["total_requests"] = 0
-                    third_parties[base_url]["total_trackers"] = 0
+                    third_parties[base_url]["times_visited"] += 1
 
-                for request in requests:
-                    is_tracker = easylist.rules.should_block(request)
-                    third_parties[base_url]["requests"][request] = is_tracker
-                    third_parties[base_url]["total_requests"] += 1
-                    if is_tracker:
-                        third_parties[base_url]["total_trackers"] += 1
+                    if "total_requests" not in third_parties[base_url]:
+                        third_parties[base_url]["requests"] = dict()
+                        third_parties[base_url]["total_requests"] = 0
+                        third_parties[base_url]["total_trackers"] = 0
+
+                    for request in requests:
+                        is_tracker = easylist.rules.should_block(request)
+                        third_parties[base_url]["requests"][request] = is_tracker
+                        third_parties[base_url]["total_requests"] += 1
+                        if is_tracker:
+                            third_parties[base_url]["total_trackers"] += 1
 
         conn.close()
-        with open("cache/thid_parties.json", "w") as fp:
+        with open("cache/third_parties.json", "w") as fp:
             json.dump(third_parties, fp)
         return third_parties
 
@@ -112,48 +113,49 @@ def get_cookies(easylist):
         cookies = dict()
         c = conn.cursor()
 
-        for row in c.execute(
-            """
-            SELECT
-                s.visit_id,
-                s.site_url,
-                (
-                    SELECT group_concat(baseDomain, '{}')
-                    FROM profile_cookies AS p
-                    WHERE s.visit_id = p.visit_id
-                ) AS p_cookies
-            FROM site_visits AS s;
-            """.format(
-                DELIMITER
-            )
-        ):
-            (visit_id, site_url, cookie_domains) = row
+        count = c.execute("SELECT count(*) FROM site_visits AS s;").fetchone()[0]
 
-            if not cookie_domains:
-                continue
+        with tqdm(total=count) as pbar:
+            for row in c.execute(
+                """
+                SELECT
+                    s.visit_id,
+                    s.site_url,
+                    (
+                        SELECT group_concat(baseDomain, '{}')
+                        FROM profile_cookies AS p
+                        WHERE s.visit_id = p.visit_id
+                    ) AS p_cookies
+                FROM site_visits AS s;
+                """.format(
+                    DELIMITER
+                )
+            ):
+                pbar.update(1)
+                (visit_id, site_url, cookie_domains) = row
 
-            base_url = get_base_url(site_url)
+                if not cookie_domains:
+                    continue
 
-            cookie_domains = cookie_domains.split(DELIMITER)
-            logger.debug("{}: {} cookies".format(site_url, len(cookie_domains)))
+                base_url = get_base_url(site_url)
 
-            if base_url not in cookies:
-                cookies[base_url] = dict()
-                cookies[base_url]["times_visited"] = 0
+                cookie_domains = cookie_domains.split(DELIMITER)
+                logger.debug("{}: {} cookies".format(site_url, len(cookie_domains)))
 
-            cookies[base_url]["times_visited"] += 1
+                if base_url not in cookies:
+                    cookies[base_url] = dict()
 
-            if "total_domains" not in cookies[base_url]:
-                cookies[base_url]["domains"] = dict()
-                cookies[base_url]["total_domains"] = 0
-                cookies[base_url]["total_trackers"] = 0
+                if "total_domains" not in cookies[base_url]:
+                    cookies[base_url]["domains"] = dict()
+                    cookies[base_url]["total_domains"] = 0
+                    cookies[base_url]["total_trackers"] = 0
 
-            for cookie_domain in cookie_domains:
-                is_tracker = easylist.rules.should_block(cookie_domain)
-                cookies[base_url]["domains"][cookie_domain] = is_tracker
-                cookies[base_url]["total_domains"] += 1
-                if is_tracker:
-                    cookies[base_url]["total_trackers"] += 1
+                for cookie_domain in cookie_domains:
+                    is_tracker = easylist.rules.should_block(cookie_domain)
+                    cookies[base_url]["domains"][cookie_domain] = is_tracker
+                    cookies[base_url]["total_domains"] += 1
+                    if is_tracker:
+                        cookies[base_url]["total_trackers"] += 1
 
         conn.close()
         with open("cache/cookies.json", "w") as fp:
@@ -237,9 +239,9 @@ def calc_privacy_score(tp_list, cookie_list, num_rows=10):
 
         for cp, d, t, cookies_per_page, p in cookie_list:
             if cp in scores:
-                scores[cp] += 3*cookies_per_page
+                scores[cp] += 3 * cookies_per_page
             else:
-                scores[cp] = 3*cookies_per_page
+                scores[cp] = 3 * cookies_per_page
 
         cf = 0
         ff = 0
@@ -255,13 +257,19 @@ def calc_privacy_score(tp_list, cookie_list, num_rows=10):
                 wf += 1
                 scores[key] += 5
         if cf != len(canvas_fingerprinting):
-            print(f"Missing canvas fingerprint match! {len(canvas_fingerprinting) - cf} more than expected")
+            print(
+                f"Missing canvas fingerprint match! {len(canvas_fingerprinting) - cf} more than expected"
+            )
 
         if ff != len(font_fingerprinting):
-            print(f"Missing font fingerprint match! {len(font_fingerprinting) - ff} more than expected")
+            print(
+                f"Missing font fingerprint match! {len(font_fingerprinting) - ff} more than expected"
+            )
 
         if wf != len(webrtc_fingerprinting):
-            print(f"Missing webrt fingerprint match! {len(webrtc_fingerprinting) - wf} more than expected")
+            print(
+                f"Missing webrt fingerprint match! {len(webrtc_fingerprinting) - wf} more than expected"
+            )
 
         return scores
 
@@ -341,20 +349,18 @@ def latex_privacy_upvotes(scores):
     for key, votes, score in all_cp_scores:
         print("{:.2f} {:.2f} \\\\".format(votes, score))
 
-
     # Now, plot this data:
-    colors = (0,0,0)
+    colors = (0, 0, 0)
     y = [float(x[1]) for x in all_cp_scores]
     x = [float(x[2]) for x in all_cp_scores]
     plt.scatter(x, y, c=colors, alpha=0.5)
     z = np.polyfit(x, y, 1)
     p = np.poly1d(z)
     plt.plot(x, p(x), "r--")
-    plt.title('Upvotes vs. Privacy Score')
-    plt.ylabel('Average Upvotes')
-    plt.xlabel('Privacy Score')
+    plt.title("Upvotes vs. Privacy Score")
+    plt.ylabel("Average Upvotes")
+    plt.xlabel("Privacy Score")
     plt.show()
-
 
 
 def main():
