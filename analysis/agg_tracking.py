@@ -64,7 +64,7 @@ def fetch_agg_data(http=True):
 
 def gen_boxplots(data, http=True):
     """Routine for generating boxplots for each aggregator."""
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(6, 3))
 
     df = data
 
@@ -72,7 +72,7 @@ def gen_boxplots(data, http=True):
     plot = sns.boxplot(x="ave_tracking", y="aggregator", orient="h", data=df)
     sns.despine(left=True, bottom=True, trim=True)
 
-    plot.set(xlabel=r"Ave. \# Tracking")
+    plot.set(xlabel=r"")
     plot.set(ylabel=r"")
     #  plt.xticks(rotation="vertical")
 
