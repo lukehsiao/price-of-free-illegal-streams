@@ -37,6 +37,9 @@ def get_base_url(url):
     o = urlparse(url)
     return o.netloc + o.path
 
+def get_actual_base(url):
+    o = urlparse(url)
+    return o.netloc
 
 def _process_row(row):
     #print(row)
@@ -262,28 +265,56 @@ def calc_privacy_score(tp_list, cookie_list, num_rows=10):
             font_fingerprinting = pickle.load(f)
 
         scores = {}
+        scores_with_extra = {}
         for cp, requests, trackers, trackers_per_page, percentage in tp_list:
             scores[cp] = 0.5 * trackers_per_page
+            # Build better dict with more info for better table
+            scores_with_extra[cp] = {}
+            scores_with_extra[cp]["score"] = scores[cp]
+            scores_with_extra[cp]["trackers_per_page"] = trackers_per_page
+            scores_with_extra[cp]["cookies_per_page"] = 0
+            scores_with_extra[cp]["cf"] = False
+            scores_with_extra[cp]["ff"] = False
+            scores_with_extra[cp]["wf"] = False
+
 
         for cp, d, t, cookies_per_page, p in cookie_list:
             if cp in scores:
                 scores[cp] += 3 * cookies_per_page
+                scores_with_extra[cp]["score"] = scores[cp]
+                scores_with_extra[cp]["cookies_per_page"] = cookies_per_page
             else:
                 scores[cp] = 3 * cookies_per_page
+                scores_with_extra[cp] = {}
+                scores_with_extra[cp]["score"] = scores[cp]
+                scores_with_extra[cp]["trackers_per_page"] = 0
+                scores_with_extra[cp]["cookies_per_page"] = cookies_per_page
+                scores_with_extra[cp]["cf"] = False
+                scores_with_extra[cp]["ff"] = False
+                scores_with_extra[cp]["wf"] = False
 
         cf = 0
         ff = 0
         wf = 0
         for key in scores:
-            if key in canvas_fingerprinting:
-                cf += 1
-                scores[key] += 5
-            if key in font_fingerprinting:
-                ff += 1
-                scores[key] += 5
-            if key in webrtc_fingerprinting:
-                wf += 1
-                scores[key] += 5
+            for fingerprint in canvas_fingerprinting:
+                if fingerprint in key:
+                    cf += 1
+                    scores[key] += 5
+                    scores_with_extra[key]["score"] = scores[key]
+                    scores_with_extra[key]["cf"] = True
+            for fingerprint in font_fingerprinting:
+                if fingerprint in key:
+                    ff += 1
+                    scores[key] += 5
+                    scores_with_extra[key]["score"] = scores[key]
+                    scores_with_extra[key]["ff"] = True
+            for fingerprint in webrtc_fingerprinting:
+                if fingerprint in key:
+                    wf += 1
+                    scores[key] += 5
+                    scores_with_extra[key]["score"] = scores[key]
+                    scores_with_extra[key]["wf"] = True
         if cf != len(canvas_fingerprinting):
             print(
                 f"Missing canvas fingerprint match! {len(canvas_fingerprinting) - cf} more than expected"
@@ -299,7 +330,7 @@ def calc_privacy_score(tp_list, cookie_list, num_rows=10):
                 f"Missing webrt fingerprint match! {len(webrtc_fingerprinting) - wf} more than expected"
             )
 
-        return scores
+        return scores, scores_with_extra
 
     except FileNotFoundError:
         print("Please run fingerprinting.py prior to calculating the privacy score.")
@@ -314,6 +345,20 @@ def latex_privacy_scores(scores, num_rows=15):
     all_cp_scores.sort(key=lambda x: x[1], reverse=True)
     for key, value in all_cp_scores[:num_rows]:
         print("\\url{{{}}} & {:.2f} \\\\".format(key, value))
+
+
+def latex_all_privacy_scores(scores, num_rows=15):
+    all_cp_scores = []
+    for key in scores:
+        all_cp_scores.append((key, scores[key]["score"],
+                              scores[key]["trackers_per_page"],
+                              scores[key]["cookies_per_page"],
+                              scores[key]["cf"],
+                              scores[key]["ff"],
+                              scores[key]["wf"]))
+    all_cp_scores.sort(key=lambda x: x[1], reverse=True)
+    for cp, score, tpp, cpp, cf, ff, wf in all_cp_scores[:num_rows]:
+        print("\\url{{{}}} & {:.2f} & {:.2f} & {} & {} & {} & {:.2f}\\\\".format(cp, tpp, cpp, cf, ff, wf, score))
 
 
 def main():
@@ -331,10 +376,14 @@ def main():
     latex_most_common_trackers(third_parties)
     print()
 
-    scores = calc_privacy_score(all_cps_tp, all_cps_cook)
+    scores, scores_with_extra = calc_privacy_score(all_cps_tp, all_cps_cook)
 
-    print("Top legit sites by privacy score:")
-    latex_privacy_scores(scores)
+    # New function that prints new table format
+    print("All info table by privacy score - legit sites: ")
+    latex_all_privacy_scores(scores_with_extra)
+
+    #print("Top legit sites by just privacy score:")
+    #latex_privacy_scores(scores)
 
 
 if __name__ == "__main__":
