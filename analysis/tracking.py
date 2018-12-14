@@ -41,17 +41,18 @@ def _process_row(row):
     base_url = get_base_url(site_url)
     total_requests = 0
     total_trackers = 0
+    tracking_requests = set()
 
     if not requests:
-        return (base_url, site_url, 0, 0)
+        return (base_url, set(), site_url, 0, 0)
 
     for request in requests.split(DELIMITER):
         is_tracker = EASYLIST.rules.should_block(request)
-        total_requests += 1
         if is_tracker:
+            tracking_requests.add(request)
             total_trackers += 1
 
-    return (base_url, site_url, total_requests, total_trackers)
+    return (base_url, site_url, tracking_requests, total_requests, total_trackers)
 
 
 def get_third_parties():
@@ -86,6 +87,7 @@ def get_third_parties():
                 for (
                     base_url,
                     site_url,
+                    tracking_requests,
                     total_requests,
                     total_trackers,
                 ) in executor.map(_process_row, c):
@@ -104,6 +106,9 @@ def get_third_parties():
                         third_parties[base_url]["requests"] = dict()
                         third_parties[base_url]["total_requests"] = 0
                         third_parties[base_url]["total_trackers"] = 0
+
+                    for tracking_request in tracking_requests:
+                        third_parties[base_url]["requests"][tracking_request] = True
 
                     third_parties[base_url]["total_requests"] += total_requests
                     third_parties[base_url]["total_trackers"] += total_trackers
