@@ -6,11 +6,16 @@ files, it also eschews logic for grabbing the base_url, because for the legitima
 directly associated with streaming, but with news etc.
 """
 
-import logging
+import concurrent.futures
 import json
+import logging
+import pickle
 import sqlite3
-from pprint import pprint
 from urllib.parse import urlparse
+
+import matplotlib.pyplot as plt
+import numpy as np
+from tqdm import tqdm
 
 from utils import EasyList
 
@@ -25,24 +30,51 @@ DELIMITER = "~^~"
 
 DBNAME = "../data_real_sites/crawl-data.sqlite"
 
+EASYLIST = EasyList()
+
 
 def get_base_url(url):
     o = urlparse(url)
     return o.netloc + o.path
 
 
-def get_third_parties(easylist):
+def _process_row(row):
+    #print(row)
+    (visit_id, site_url, requests) = row
+
+    base_url = get_base_url(site_url)
+    total_requests = 0
+    total_trackers = 0
+    tracking_requests = set()
+
+    if not requests:
+        print("no requests2")
+        return (base_url, set(), site_url, 0, 0)
+    print("TRY AGAIN")
+
+    for request in requests.split(DELIMITER):
+        is_tracker = EASYLIST.rules.should_block(request)
+        total_requests += 1
+        if is_tracker:
+            tracking_requests.add(request)
+            total_trackers += 1
+
+    return (base_url, site_url, tracking_requests, total_requests, total_trackers)
+
+
+def get_third_parties():
 
     try:
-        with open("cache/thid_parties_real.json") as handle:
-            third_parties = json.loads(handle.read())
+        with open("cache/third_parties_real.json") as handle:
+            third_parties =json.loads(handle.read())
             return third_parties
     except FileNotFoundError:
         conn = sqlite3.connect(DBNAME)
         third_parties = dict()
         c = conn.cursor()
 
-        for row in c.execute(
+        count = c.execute("SELECT count(*) FROM site_visits AS s;").fetchone()[0]
+        c.execute(
             """
             SELECT
                 s.visit_id,
@@ -56,40 +88,45 @@ def get_third_parties(easylist):
             """.format(
                 DELIMITER
             )
-        ):
-            (visit_id, site_url, requests) = row
+        )
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            with tqdm(total=count) as pbar:
+                for (
+                    base_url,
+                    site_url,
+                    tracking_requests,
+                    total_requests,
+                    total_trackers,
+                ) in executor.map(_process_row, c):
+                    pbar.update(1)
 
-            if not requests:
-                continue
+                    if total_requests == 0:
+                        continue
 
-            base_url = get_base_url(site_url)
+                    if base_url not in third_parties:
+                        third_parties[base_url] = dict()
+                        third_parties[base_url]["times_visited"] = 0
 
-            requests = requests.split(DELIMITER)
+                    third_parties[base_url]["times_visited"] += 1
 
-            logger.debug("{}: {} requests".format(site_url, len(requests)))
+                    if "total_requests" not in third_parties[base_url]:
+                        third_parties[base_url]["requests"] = dict()
+                        third_parties[base_url]["total_requests"] = 0
+                        third_parties[base_url]["total_trackers"] = 0
 
-            if base_url not in third_parties:
-                third_parties[base_url] = dict()
+                    for tracking_request in tracking_requests:
+                        third_parties[base_url]["requests"][tracking_request] = True
 
-            if "total_requests" not in third_parties[base_url]:
-                third_parties[base_url]["requests"] = dict()
-                third_parties[base_url]["total_requests"] = 0
-                third_parties[base_url]["total_trackers"] = 0
-
-            for request in requests:
-                is_tracker = easylist.rules.should_block(request)
-                third_parties[base_url]["requests"][request] = is_tracker
-                third_parties[base_url]["total_requests"] += 1
-                if is_tracker:
-                    third_parties[base_url]["total_trackers"] += 1
+                    third_parties[base_url]["total_requests"] += total_requests
+                    third_parties[base_url]["total_trackers"] += total_trackers
 
         conn.close()
-        with open("cache/thid_parties_real.json", "w") as fp:
-            json.dump(third_parties, fp)
+        with open("cache/third_parties_real.json", "w") as fp:
+           json.dump(third_parties, fp)
         return third_parties
 
 
-def get_cookies(easylist):
+def get_cookies():
 
     try:
         with open("cache/cookies_real.json") as handle:
@@ -100,49 +137,56 @@ def get_cookies(easylist):
         cookies = dict()
         c = conn.cursor()
 
-        for row in c.execute(
-            """
-            SELECT
-                s.visit_id,
-                s.site_url,
-                (
-                    SELECT group_concat(baseDomain, '{}')
-                    FROM profile_cookies AS p
-                    WHERE s.visit_id = p.visit_id
-                ) AS p_cookies
-            FROM site_visits AS s;
-            """.format(
-                DELIMITER
-            )
-        ):
-            (visit_id, site_url, cookie_domains) = row
+        count = c.execute("SELECT count(*) FROM site_visits AS s;").fetchone()[0]
 
-            if not cookie_domains:
-                continue
+        with tqdm(total=count) as pbar:
+            for row in c.execute(
+                """
+                SELECT
+                    s.visit_id,
+                    s.site_url,
+                    (
+                        SELECT group_concat(baseDomain, '{}')
+                        FROM profile_cookies AS p
+                        WHERE s.visit_id = p.visit_id
+                    ) AS p_cookies
+                FROM site_visits AS s;
+                """.format(
+                    DELIMITER
+                )
+            ):
+                pbar.update(1)
+                (visit_id, site_url, cookie_domains) = row
 
-            base_url = get_base_url(site_url)
+                if not cookie_domains:
+                    continue
 
-            cookie_domains = cookie_domains.split(DELIMITER)
-            logger.debug("{}: {} cookies".format(site_url, len(cookie_domains)))
+                base_url = get_base_url(site_url)
 
-            if base_url not in cookies:
-                cookies[base_url] = dict()
+                cookie_domains = cookie_domains.split(DELIMITER)
+                logger.debug("{}: {} cookies".format(site_url, len(cookie_domains)))
 
-            if "total_domains" not in cookies[base_url]:
-                cookies[base_url]["domains"] = dict()
-                cookies[base_url]["total_domains"] = 0
-                cookies[base_url]["total_trackers"] = 0
+                if base_url not in cookies:
+                    cookies[base_url] = dict()
+                    cookies[base_url]["times_visited"] = 0
 
-            for cookie_domain in cookie_domains:
-                is_tracker = easylist.rules.should_block(cookie_domain)
-                cookies[base_url]["domains"][cookie_domain] = is_tracker
-                cookies[base_url]["total_domains"] += 1
-                if is_tracker:
-                    cookies[base_url]["total_trackers"] += 1
+                cookies[base_url]["times_visited"] += 1
+
+                if "total_domains" not in cookies[base_url]:
+                    cookies[base_url]["domains"] = dict()
+                    cookies[base_url]["total_domains"] = 0
+                    cookies[base_url]["total_trackers"] = 0
+
+                for cookie_domain in cookie_domains:
+                    is_tracker = EASYLIST.rules.should_block(cookie_domain)
+                    cookies[base_url]["domains"][cookie_domain] = is_tracker
+                    cookies[base_url]["total_domains"] += 1
+                    if is_tracker:
+                        cookies[base_url]["total_trackers"] += 1
 
         conn.close()
         with open("cache/cookies_real.json", "w") as fp:
-            json.dump(cookies, fp)
+           json.dump(cookies, fp)
     return cookies
 
 
@@ -151,14 +195,17 @@ def latex_cookies(cookies, num_rows=10):
     for key, value in cookies.items():
         domains = value["total_domains"]
         trackers = value["total_trackers"]
+        trackers_per_page = trackers / value["times_visited"]
         percentage = (trackers / domains) * 100
-        all_cps.append((key, domains, trackers, percentage))
+        all_cps.append((key, domains, trackers, trackers_per_page, percentage))
 
     # sort by percentage
     all_cps.sort(key=lambda x: x[3], reverse=True)
 
-    for cp, d, t, p in all_cps[:num_rows]:
-        print("\\url{{{}}} & {} & {} & {:.2f} \\\\".format(cp, d, t, p))
+    for cp, d, t, ttp, p in all_cps[:num_rows]:
+        print("\\url{{{}}} & {:.2f} & {:.2f} \\\\".format(cp, p, ttp))
+
+    return all_cps
 
 
 def latex_third_parties(third_parties, num_rows=10):
@@ -166,17 +213,20 @@ def latex_third_parties(third_parties, num_rows=10):
     for key, value in third_parties.items():
         requests = value["total_requests"]
         trackers = value["total_trackers"]
+        trackers_per_page = trackers / value["times_visited"]
         percentage = (trackers / requests) * 100
-        all_cps.append((key, requests, trackers, percentage))
+        all_cps.append((key, requests, trackers, trackers_per_page, percentage))
 
     # sort by percentage
     all_cps.sort(key=lambda x: x[3], reverse=True)
 
-    for cp, d, t, p in all_cps[:num_rows]:
-        print("\\url{{{}}} & {} & {} & {:.2f} \\\\".format(cp, d, t, p))
+    for cp, d, t, ttp, p in all_cps[:num_rows]:
+        print("\\url{{{}}} & {:.2f} & {:.2f} \\\\".format(cp, p, ttp))
+    return all_cps
 
 
 def latex_most_common_trackers(third_parties, num_rows=10):
+
     all_trackers = dict()
     total_tracking_domains = 0
     for key, value in third_parties.items():
@@ -199,18 +249,92 @@ def latex_most_common_trackers(third_parties, num_rows=10):
         print("\\url{{{}}} & {} & {:.2f} \\\\".format(d, v, p))
 
 
+def calc_privacy_score(tp_list, cookie_list, num_rows=10):
+    # First, import the fingerprinting data from the cache
+    try:
+        with open("cache/canvas_fingerprinting_real.pkl", "rb") as f:
+            canvas_fingerprinting = pickle.load(f)
+
+        with open("cache/webrtc_fingerprinting_real.pkl", "rb") as f:
+            webrtc_fingerprinting = pickle.load(f)
+
+        with open("cache/font_fingerprinting_real.pkl", "rb") as f:
+            font_fingerprinting = pickle.load(f)
+
+        scores = {}
+        for cp, requests, trackers, trackers_per_page, percentage in tp_list:
+            scores[cp] = 0.5 * trackers_per_page
+
+        for cp, d, t, cookies_per_page, p in cookie_list:
+            if cp in scores:
+                scores[cp] += 3 * cookies_per_page
+            else:
+                scores[cp] = 3 * cookies_per_page
+
+        cf = 0
+        ff = 0
+        wf = 0
+        for key in scores:
+            if key in canvas_fingerprinting:
+                cf += 1
+                scores[key] += 5
+            if key in font_fingerprinting:
+                ff += 1
+                scores[key] += 5
+            if key in webrtc_fingerprinting:
+                wf += 1
+                scores[key] += 5
+        if cf != len(canvas_fingerprinting):
+            print(
+                f"Missing canvas fingerprint match! {len(canvas_fingerprinting) - cf} more than expected"
+            )
+
+        if ff != len(font_fingerprinting):
+            print(
+                f"Missing font fingerprint match! {len(font_fingerprinting) - ff} more than expected"
+            )
+
+        if wf != len(webrtc_fingerprinting):
+            print(
+                f"Missing webrt fingerprint match! {len(webrtc_fingerprinting) - wf} more than expected"
+            )
+
+        return scores
+
+    except FileNotFoundError:
+        print("Please run fingerprinting.py prior to calculating the privacy score.")
+
+        return {}
+
+
+def latex_privacy_scores(scores, num_rows=15):
+    all_cp_scores = []
+    for key in scores:
+        all_cp_scores.append((key, scores[key]))
+    all_cp_scores.sort(key=lambda x: x[1], reverse=True)
+    for key, value in all_cp_scores[:num_rows]:
+        print("\\url{{{}}} & {:.2f} \\\\".format(key, value))
+
+
 def main():
 
-    easylist = EasyList()
-
-    cookies = get_cookies(easylist)
-    latex_cookies(cookies)
-
-    third_parties = get_third_parties(easylist)
+    cookies = get_cookies()
+    print("Tracking Cookies per legit site: ")
+    all_cps_cook = latex_cookies(cookies, num_rows=15)
     print()
-    latex_third_parties(third_parties)
+
+    third_parties = get_third_parties()
+    print("Tracking HTTP Requests per legit site: ")
+    all_cps_tp = latex_third_parties(third_parties)
     print()
+    print("Most common trackers accessed by legit sites: ")
     latex_most_common_trackers(third_parties)
+    print()
+
+    scores = calc_privacy_score(all_cps_tp, all_cps_cook)
+
+    print("Top legit sites by privacy score:")
+    latex_privacy_scores(scores)
 
 
 if __name__ == "__main__":

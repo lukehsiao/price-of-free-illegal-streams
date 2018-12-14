@@ -1,4 +1,4 @@
-adblockerparser
+adblockparser
 geoip2
 ipwhois
 matplotlib
