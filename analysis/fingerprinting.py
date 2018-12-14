@@ -337,19 +337,40 @@ def get_canvas_fingerprinting():
 def main():
 
     canvas = get_canvas_fingerprinting()
-    print("Canvas Fingerprinting:")
-    for site in canvas:
-        print(f"{site}")
+    #  print("Canvas Fingerprinting:")
+    #  for site in sorted(canvas):
+    #      print(f"{site}")
 
     font = get_font_fingerprinting()
-    print("\nFont Fingerprinting:")
-    for site in font:
-        print(f"{site}")
+    #  print("\nFont Fingerprinting:")
+    #  for site in sorted(font):
+    #      print(f"{site}")
 
     webrtc = get_webrtc_fingerprinting()
-    print("\nWebRTC Fingerprinting:")
-    for site in webrtc:
-        print(f"{site}")
+    #  print("\nWebRTC Fingerprinting:")
+    #  for site in sorted(webrtc):
+    #      print(f"{site}")
+
+    print("\n\n")
+    print(f"Canvas Fingerprinting & {len(canvas)} \\\\")
+    print(f"Font Fingerprinting   & {len(font)}   \\\\")
+    print(f"WebRTC Fingerprinting & {len(webrtc)} \\\\")
+
+    print("\n\nAll 3:")
+    for x in sorted(canvas.intersection(font).intersection(webrtc)):
+        print(f"{x}")
+
+    print("\n\nCanvas and Font:")
+    for x in sorted(canvas.intersection(font)):
+        print(f"{x}")
+
+    print("\n\nCanvas and Web:")
+    for x in sorted(canvas.intersection(webrtc)):
+        print(f"{x}")
+
+    print("\n\nFont and Web:")
+    for x in sorted(font.intersection(webrtc)):
+        print(f"{x}")
 
 
 if __name__ == "__main__":
