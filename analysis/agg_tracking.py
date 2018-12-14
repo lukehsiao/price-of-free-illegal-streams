@@ -40,18 +40,21 @@ def fetch_agg_data(http=True):
         password=GCSQL_PWD,
     )
     cur = conn.cursor()
-    get_agg_cmd = "SELECT aggregator FROM stream_urls WHERE base_url = (%s)"
+    get_agg_cmd = "SELECT DISTINCT(aggregator) FROM stream_urls WHERE base_url = (%s)"
 
     for key, value in cache.items():
         trackers = value["total_trackers"]
         times_visited = value["times_visited"]
 
         cur.execute(get_agg_cmd, (key,))
-        aggregator = cur.fetchone()[0]
 
-        new_entry = [aggregator, key, trackers / times_visited]
+        # Give each aggregator credit if they have the same CP
+        aggregators = [_[0] for _ in cur.fetchall()]
+        for aggregator in aggregators:
 
-        entries.append(new_entry)
+            new_entry = [aggregator, key, trackers / times_visited]
+
+            entries.append(new_entry)
 
     #  entries = entries.sort(key=lambda x: x[2])
     # Make dataframe for plotting
