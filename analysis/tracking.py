@@ -191,7 +191,7 @@ def latex_cookies(cookies, num_rows=10):
     all_cps.sort(key=lambda x: x[3], reverse=True)
 
     for cp, d, t, ttp, p in all_cps[:num_rows]:
-        print("\\url{{{}}} & {} & {} & {:.2f} & {:.2f} \\\\".format(cp, d, t, ttp, p))
+        print("\\url{{{}}} & {:.2f} & {:.2f} \\\\".format(cp, p, ttp))
 
     return all_cps
 
@@ -209,7 +209,7 @@ def latex_third_parties(third_parties, num_rows=10):
     all_cps.sort(key=lambda x: x[3], reverse=True)
 
     for cp, d, t, ttp, p in all_cps[:num_rows]:
-        print("\\url{{{}}} & {} & {} & {:.2f} & {:.2f} \\\\".format(cp, d, t, ttp, p))
+        print("\\url{{{}}} & {:.2f} & {:.2f} \\\\".format(cp, p, ttp))
     return all_cps
 
 
@@ -375,7 +375,7 @@ def latex_privacy_upvotes(scores):
     plt.title("Upvotes vs. Privacy Score")
     plt.ylabel("Average Upvotes")
     plt.xlabel("Privacy Score")
-    plt.show()
+    #  plt.show()
 
 
 def main():
