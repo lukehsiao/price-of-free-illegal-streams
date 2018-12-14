@@ -83,34 +83,30 @@ def get_third_parties():
         )
         with concurrent.futures.ProcessPoolExecutor() as executor:
             with tqdm(total=count) as pbar:
-                while True:
-                    batch = c.fetchmany(size=5000)
-                    if not batch:
-                        break
-                    for (
-                        base_url,
-                        site_url,
-                        total_requests,
-                        total_trackers,
-                    ) in executor.map(_process_row, batch):
-                        pbar.update(1)
+                for (
+                    base_url,
+                    site_url,
+                    total_requests,
+                    total_trackers,
+                ) in executor.map(_process_row, c):
+                    pbar.update(1)
 
-                        if total_requests == 0:
-                            continue
+                    if total_requests == 0:
+                        continue
 
-                        if base_url not in third_parties:
-                            third_parties[base_url] = dict()
-                            third_parties[base_url]["times_visited"] = 0
+                    if base_url not in third_parties:
+                        third_parties[base_url] = dict()
+                        third_parties[base_url]["times_visited"] = 0
 
-                        third_parties[base_url]["times_visited"] += 1
+                    third_parties[base_url]["times_visited"] += 1
 
-                        if "total_requests" not in third_parties[base_url]:
-                            third_parties[base_url]["requests"] = dict()
-                            third_parties[base_url]["total_requests"] = 0
-                            third_parties[base_url]["total_trackers"] = 0
+                    if "total_requests" not in third_parties[base_url]:
+                        third_parties[base_url]["requests"] = dict()
+                        third_parties[base_url]["total_requests"] = 0
+                        third_parties[base_url]["total_trackers"] = 0
 
-                        third_parties[base_url]["total_requests"] += total_requests
-                        third_parties[base_url]["total_trackers"] += total_trackers
+                    third_parties[base_url]["total_requests"] += total_requests
+                    third_parties[base_url]["total_trackers"] += total_trackers
 
         conn.close()
         with open("cache/third_parties.json", "w") as fp:
@@ -207,7 +203,7 @@ def latex_third_parties(third_parties, num_rows=10):
         all_cps.append((key, requests, trackers, trackers_per_page, percentage))
 
     # sort by percentage
-    all_cps.sort(key=lambda x: x[4], reverse=True)
+    all_cps.sort(key=lambda x: x[3], reverse=True)
 
     for cp, d, t, ttp, p in all_cps[:num_rows]:
         print("\\url{{{}}} & {} & {} & {:.2f} & {:.2f} \\\\".format(cp, d, t, ttp, p))
