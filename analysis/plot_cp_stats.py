@@ -56,7 +56,7 @@ def get_alexa_rank(base_url):
 
 def plot_alexa_distribution(data):
     """Plot the alexa distribution."""
-    fig, ax = plt.subplots(figsize=(6, 4))
+    fig, ax = plt.subplots(figsize=(6, 3))
 
     df = data
 
@@ -76,9 +76,11 @@ def plot_alexa_distribution(data):
     plot.set(xlabel=r"Alexa Global Rank")
     plt.xlim([0, 11e5])
     plt.xticks([0, 2e5, 4e5, 6e5, 8e5, 1e6, 1.1e6])
+    plt.yticks(np.arange(0, 150, 25))
+    plt.ylim([0, 130])
     plot.set_xticklabels(["0", "200K", "400K", "600K", "800K", "1M", "1M+"])
 
-    outfile = "out.pdf"
+    outfile = "alexa_dist.pdf"
     pp = PdfPages(outfile)
     pp.savefig(plot.get_figure().tight_layout())
     pp.close()

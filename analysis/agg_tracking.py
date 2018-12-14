@@ -4,6 +4,7 @@ from subprocess import DEVNULL, run
 
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import psycopg2
 import seaborn as sns
@@ -74,11 +75,15 @@ def gen_boxplots(data, http=True):
 
     plot.set(xlabel=r"")
     plot.set(ylabel=r"")
-    #  plt.xticks(rotation="vertical")
 
+    # x-limit to prevent outlier for skewing the whole view.
     if http:
+        plt.xticks(np.arange(0, 180, 30))
+        plt.xlim([0, 155])
         outfile = "agg_track.pdf"
     else:
+        plt.xticks(np.arange(0, 2, 0.25))
+        plt.xlim([0, 2])
         outfile = "agg_cookies.pdf"
     pp = PdfPages(outfile)
     pp.savefig(plot.get_figure().tight_layout())
