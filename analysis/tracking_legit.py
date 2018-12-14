@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-'''
+"""
 This script is very similar to tracking.py, but works on the database of legimiate websites. Other than accessing different
 files, it also eschews logic for grabbing the base_url, because for the legitimate websites the base url is often not even
 directly associated with streaming, but with news etc.
-'''
+"""
 
 import logging
 import json
@@ -16,7 +16,7 @@ from utils import EasyList
 
 logging.basicConfig(
     format="[%(asctime)s][%(levelname)s] %(name)s - %(message)s",
-    filename="tracking.log",
+    filename="tracking_legit.log",
     level=logging.DEBUG,
 )
 logger = logging.getLogger(__name__)
@@ -65,7 +65,6 @@ def get_third_parties(easylist):
             base_url = get_base_url(site_url)
 
             requests = requests.split(DELIMITER)
-
 
             logger.debug("{}: {} requests".format(site_url, len(requests)))
 

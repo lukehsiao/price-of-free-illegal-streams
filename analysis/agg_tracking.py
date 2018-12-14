@@ -48,7 +48,7 @@ if __name__ == "__main__":
             )
 
     all_aggs_list = []
- #   print(all_aggs)
+    #   print(all_aggs)
     for key in all_aggs:
         value = all_aggs[key]
         percentage = value[1] / value[0]
@@ -56,6 +56,7 @@ if __name__ == "__main__":
         all_aggs_list.append((key, value[0], value[1], percentage, trackers_per_page))
 
     all_aggs_list.sort(key=lambda x: x[4], reverse=True)
+    print("HTTP Request Table for aggregators")
     for agg, d, t, p, ttp in all_aggs_list[:num_rows]:  # [:num_rows]:
         print("{} & {:.2f} & {:.2f} \\\\".format(agg, p, ttp))
     print()
@@ -80,7 +81,7 @@ if __name__ == "__main__":
             )
 
     all_aggs2_list = []
-    #print(all_aggs2)
+    # print(all_aggs2)
     for key in all_aggs2:
         value = all_aggs2[key]
         percentage = value[1] / value[0]
