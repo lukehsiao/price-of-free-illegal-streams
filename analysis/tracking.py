@@ -48,6 +48,7 @@ def _process_row(row):
 
     for request in requests.split(DELIMITER):
         is_tracker = EASYLIST.rules.should_block(request)
+        total_requests += 1
         if is_tracker:
             tracking_requests.add(request)
             total_trackers += 1
