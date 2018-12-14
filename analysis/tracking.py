@@ -156,6 +156,9 @@ def get_cookies():
 
                 if base_url not in cookies:
                     cookies[base_url] = dict()
+                    cookies[base_url]["times_visited"] = 0
+
+                cookies[base_url]["times_visited"] += 1
 
                 if "total_domains" not in cookies[base_url]:
                     cookies[base_url]["domains"] = dict()
