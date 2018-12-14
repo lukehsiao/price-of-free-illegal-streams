@@ -214,6 +214,7 @@ def latex_third_parties(third_parties, num_rows=10):
 
 
 def latex_most_common_trackers(third_parties, num_rows=10):
+
     all_trackers = dict()
     total_tracking_domains = 0
     for key, value in third_parties.items():
@@ -323,12 +324,12 @@ def agg_privacy_scores(scores):
     return agg_score_dict
 
 
-def latex_privacy_scores(scores):
+def latex_privacy_scores(scores, num_rows=15):
     all_cp_scores = []
     for key in scores:
         all_cp_scores.append((key, scores[key]))
     all_cp_scores.sort(key=lambda x: x[1], reverse=True)
-    for key, value in all_cp_scores:
+    for key, value in all_cp_scores[:num_rows]:
         print("\\url{{{}}} & {:.2f} \\\\".format(key, value))
 
 
@@ -382,7 +383,7 @@ def main():
 
     cookies = get_cookies()
     print("Tracking Cookies per CP: ")
-    all_cps_cook = latex_cookies(cookies)
+    all_cps_cook = latex_cookies(cookies, num_rows=15)
     print()
 
     third_parties = get_third_parties()
@@ -396,13 +397,13 @@ def main():
 
     scores = calc_privacy_score(all_cps_tp, all_cps_cook)
 
-    print("Top 10 CPs by privacy score:")
+    print("Top 15 CPs by privacy score:")
     latex_privacy_scores(scores)
     print()
 
     agg_scores = agg_privacy_scores(scores)
 
-    print("Top 10 aggs by privacy score:")
+    print("Top 10 aggs by privacy score (MANUALLY EDIT):")
     latex_privacy_scores(agg_scores)
     print()
 
