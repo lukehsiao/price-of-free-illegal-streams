@@ -1,13 +1,90 @@
 import json
-import psycopg2
 import os
-from psycopg2 import IntegrityError
+from subprocess import DEVNULL, run
+
+import matplotlib
+import matplotlib.pyplot as plt
+import pandas as pd
+import psycopg2
+import seaborn as sns
+from matplotlib.backends.backend_pdf import PdfPages
+
+matplotlib.rcParams["text.usetex"] = True
+sns.set(style="whitegrid")
+sns.set_context("paper", font_scale=1.7)
+sns.set_palette(sns.color_palette("colorblind"))
 
 GCSQL_PWD = os.environ["GCSQL_PWD"]
 
 
-if __name__ == "__main__":
+def fetch_agg_data(http=True):
+    """Return aggregator tracking data
 
+    :rtype: Dataframe containing aggregator, base_url, tracking.
+    """
+    entries = []
+    cache = {}
+    if http:
+        with open("cache/third_parties.json", "r") as f:
+            cache = json.load(f)
+    else:
+        with open("cache/cookies.json", "r") as f:
+            cache = json.load(f)
+
+    # Init db connection
+    conn = psycopg2.connect(
+        host="localhost",
+        port="6543",
+        dbname="postgres",
+        user="postgres",
+        password=GCSQL_PWD,
+    )
+    cur = conn.cursor()
+    get_agg_cmd = "SELECT aggregator FROM stream_urls WHERE base_url = (%s)"
+
+    for key, value in cache.items():
+        trackers = value["total_trackers"]
+        times_visited = value["times_visited"]
+
+        cur.execute(get_agg_cmd, (key,))
+        aggregator = cur.fetchone()[0]
+
+        new_entry = [aggregator, key, trackers / times_visited]
+
+        entries.append(new_entry)
+
+    #  entries = entries.sort(key=lambda x: x[2])
+    # Make dataframe for plotting
+    data = pd.DataFrame(entries, columns=["aggregator", "base_url", "ave_tracking"])
+    return data.sort_values(["aggregator"], ascending=[True])
+
+
+def gen_boxplots(data, http=True):
+    """Routine for generating boxplots for each aggregator."""
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    df = data
+
+    # Set up the matplotlib figure
+    plot = sns.boxplot(x="ave_tracking", y="aggregator", orient="h", data=df)
+    sns.despine(left=True, bottom=True, trim=True)
+
+    plot.set(xlabel=r"Ave. \# Tracking")
+    plot.set(ylabel=r"")
+    #  plt.xticks(rotation="vertical")
+
+    if http:
+        outfile = "agg_track.pdf"
+    else:
+        outfile = "agg_cookies.pdf"
+    pp = PdfPages(outfile)
+    pp.savefig(plot.get_figure().tight_layout())
+    pp.close()
+    run(["pdfcrop", outfile, outfile], stdout=DEVNULL, check=True)
+    return
+
+
+def main():
     num_rows = 10
 
     third_parties = {}
@@ -93,3 +170,10 @@ if __name__ == "__main__":
 
     cur.close()
     conn.close()
+
+
+if __name__ == "__main__":
+    data = fetch_agg_data(http=True)
+    gen_boxplots(data, http=True)
+    data = fetch_agg_data(http=False)
+    gen_boxplots(data, http=False)
