@@ -17,6 +17,13 @@ sns.set_palette(sns.color_palette("colorblind"))
 
 GCSQL_PWD = os.environ["GCSQL_PWD"]
 
+"""
+This file contains code for plotting boxplots which describe the
+aggregators by the number of tracking HTTP requests they issue
+and the number of tracking cookies they set. This file does not
+produce the boxplot for aggregators by privacy socre -- that
+is now handled in tracking.py
+"""
 
 def fetch_agg_data(http=True):
     """Return aggregator tracking data
