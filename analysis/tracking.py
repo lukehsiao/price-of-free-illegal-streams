@@ -6,11 +6,21 @@ import os
 import pickle
 import sqlite3
 from urllib.parse import urlparse
+from subprocess import DEVNULL, run
 
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import psycopg2
+import seaborn as sns
 from tqdm import tqdm
+from matplotlib.backends.backend_pdf import PdfPages
+
+matplotlib.rcParams["text.usetex"] = True
+sns.set(style="whitegrid")
+sns.set_context("paper", font_scale=1.7)
+sns.set_palette(sns.color_palette("colorblind"))
 
 from utils import EasyList
 
@@ -338,10 +348,12 @@ def agg_privacy_scores(scores):
     cur = conn.cursor()
     get_agg_cmd = "SELECT aggregator FROM stream_urls WHERE base_url = (%s)"
     all_aggs = {}
+    aggs_for_bp = []
     for key in scores:
         cur.execute(get_agg_cmd, (key,))
         rows = cur.fetchall()
         aggregator = rows[0][0]
+        aggs_for_bp.append([aggregator, scores[key]])
         if aggregator not in all_aggs:
             all_aggs[aggregator] = (scores[key], 1)
         else:
@@ -352,7 +364,35 @@ def agg_privacy_scores(scores):
     agg_score_dict = {}
     for key in all_aggs:
         agg_score_dict[key] = all_aggs[key][0] / all_aggs[key][1]
-    return agg_score_dict
+    return agg_score_dict, aggs_for_bp
+
+
+def gen_boxplots(entries):
+    """Routine for generating boxplots for each aggregator."""
+
+    data = pd.DataFrame(entries, columns=["aggregator", "score"])
+    data = data.sort_values(["aggregator"], ascending=[True])
+
+    fig, ax = plt.subplots(figsize=(6, 3))
+
+    df = data
+
+    # Set up the matplotlib figure
+    plot = sns.boxplot(x="score", y="aggregator", orient="h", data=df)
+    sns.despine(left=True, bottom=True, trim=True)
+
+    plot.set(xlabel=r"")
+    plot.set(ylabel=r"")
+
+    # x-limit to prevent outlier for skewing the whole view.
+    plt.xticks(np.arange(0, 100, 30))
+    plt.xlim([0, 100])
+    outfile = "agg_privacy.pdf"
+    pp = PdfPages(outfile)
+    pp.savefig(plot.get_figure().tight_layout())
+    pp.close()
+    run(["pdfcrop", outfile, outfile], stdout=DEVNULL, check=True)
+    return
 
 
 def latex_privacy_scores(scores, num_rows=15):
@@ -421,13 +461,11 @@ def latex_privacy_upvotes(scores):
     colors = (0, 0, 0)
     y = [float(x[1]) for x in all_cp_scores]
     x = [float(x[2]) for x in all_cp_scores]
-    plt.scatter(x, y, c=colors, alpha=0.5)
-    z = np.polyfit(x, y, 1)
-    p = np.poly1d(z)
-    plt.plot(x, p(x), "r--")
-    plt.title("Upvotes vs. Privacy Score")
-    plt.ylabel("Average Upvotes")
-    plt.xlabel("Privacy Score")
+
+    df = pd.DataFrame()
+    df['Privacy Score'] = x
+    df['Average Upvotes'] = y
+    sns.lmplot('Privacy Score', 'Average Upvotes', data=df, fit_reg=True)
     plt.show()
 
 
@@ -443,9 +481,9 @@ def main():
     print("Tracking HTTP Requests per CP: ")
     all_cps_tp = latex_third_parties(third_parties)
     print()
-    #print("Most common trackers accessed: ")
-    #latex_most_common_trackers(third_parties)
-    #print()
+    print("Most common trackers accessed: ")
+    latex_most_common_trackers(third_parties)
+    print()
 
     scores, scores_with_extra = calc_privacy_score(all_cps_tp, all_cps_cook)
 
@@ -453,19 +491,20 @@ def main():
     print("All info table by privacy score: ")
     latex_all_privacy_scores(scores_with_extra)
 
-    #print("Top 15 CPs by privacy score:")
-    #latex_privacy_scores(scores)
-    #print()
+    print("Top 15 CPs by privacy score:")
+    latex_privacy_scores(scores)
+    print()
 
-    #agg_scores = agg_privacy_scores(scores)
+    agg_scores, entries = agg_privacy_scores(scores)
+    gen_boxplots(entries)
 
-    #print("Top 10 aggs by privacy score (MANUALLY EDIT):")
-    #latex_privacy_scores(agg_scores)
-    #print()
+    print("Top 10 aggs by privacy score (MANUALLY EDIT):")
+    latex_privacy_scores(agg_scores)
+    print()
 
-    #vote_scores = privacy_vs_upvotes(scores)
-    #print("Privacy score vs. upvotes:")
-    #latex_privacy_upvotes(vote_scores)
+    vote_scores = privacy_vs_upvotes(scores)
+    print("Privacy score vs. upvotes:")
+    latex_privacy_upvotes(vote_scores)
 
 
 if __name__ == "__main__":
